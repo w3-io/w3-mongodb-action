@@ -1,6 +1,6 @@
 # W3 MongoDB Action
 
-Complete MongoDB API for W3 workflows. 28 commands covering documents, queries, aggregations, atomic operations, bulk writes, indexes, and collection management.
+Complete MongoDB API for W3 workflows. 30 commands covering documents, queries, aggregations, atomic operations, ACID transactions, bulk writes, indexes, and collection management.
 
 ## Commands
 
@@ -34,11 +34,12 @@ Complete MongoDB API for W3 workflows. 28 commands covering documents, queries, 
 | `find-one-and-replace` | Atomically find and replace, return the document |
 | `find-one-and-delete` | Atomically find and delete, return the document |
 
-### Bulk
+### Bulk & Transactions
 
 | Command | Description |
 |---------|-------------|
-| `bulk-write` | Execute mixed insert/update/delete operations in one call |
+| `bulk-write` | Execute mixed operations on a single collection |
+| `transaction` | ACID transaction across multiple collections (requires replica set) |
 
 ### Aggregation
 
@@ -66,6 +67,7 @@ Complete MongoDB API for W3 workflows. 28 commands covering documents, queries, 
 | `rename-collection` | Rename a collection |
 | `collection-stats` | Get collection statistics (count, size, index info) |
 | `db-stats` | Get database statistics |
+| `drop-database` | Drop the entire database |
 | `run-command` | Execute an arbitrary database command |
 
 ## Usage
@@ -134,6 +136,59 @@ Complete MongoDB API for W3 workflows. 28 commands covering documents, queries, 
       ]
     ordered: 'false'
 ```
+
+### Transactions
+
+```yaml
+# Transfer funds between accounts atomically
+- uses: w3/mongodb@v1
+  with:
+    command: transaction
+    url: ${{ secrets.MONGODB_URL }}
+    operations: |
+      [
+        {
+          "collection": "accounts",
+          "op": "updateOne",
+          "filter": {"_id": "alice"},
+          "update": {"$inc": {"balance": -100}}
+        },
+        {
+          "collection": "accounts",
+          "op": "updateOne",
+          "filter": {"_id": "bob"},
+          "update": {"$inc": {"balance": 100}}
+        },
+        {
+          "collection": "ledger",
+          "op": "insertOne",
+          "document": {"from": "alice", "to": "bob", "amount": 100, "ts": "2026-04-01"}
+        }
+      ]
+
+# Transaction with reads and conditional writes
+- uses: w3/mongodb@v1
+  with:
+    command: transaction
+    url: ${{ secrets.MONGODB_URL }}
+    operations: |
+      [
+        {
+          "collection": "inventory",
+          "op": "findOneAndUpdate",
+          "filter": {"sku": "ABC", "qty": {"$gte": 5}},
+          "update": {"$inc": {"qty": -5}},
+          "returnDocument": "after"
+        },
+        {
+          "collection": "orders",
+          "op": "insertOne",
+          "document": {"sku": "ABC", "qty": 5, "status": "placed"}
+        }
+      ]
+```
+
+Transactions support: `insertOne`, `insertMany`, `updateOne`, `updateMany`, `replaceOne`, `deleteOne`, `deleteMany`, `findOne`, `findOneAndUpdate`, `findOneAndDelete`. Requires a replica set or Atlas (standalone instances don't support transactions).
 
 ### Aggregation
 

@@ -65090,6 +65090,212 @@ async function run() {
       return;
     }
 
+    if (command === "drop-database") {
+      const dropResult = await db.dropDatabase();
+      core.setOutput("result", JSON.stringify({ dropped: dropResult }));
+      return;
+    }
+
+    if (command === "transaction") {
+      if (!operationsStr)
+        throw new Error("operations is required for transaction");
+      const txOps = JSON.parse(operationsStr);
+      if (!Array.isArray(txOps))
+        throw new Error("operations must be a JSON array");
+
+      const session = client.startSession();
+      const txResults = [];
+      try {
+        await session.withTransaction(async () => {
+          for (const op of txOps) {
+            if (!op.collection)
+              throw new Error(
+                "Each transaction operation must specify a collection",
+              );
+            if (!op.op) throw new Error("Each transaction operation must specify an op");
+            const coll = db.collection(op.collection);
+
+            switch (op.op) {
+              case "insertOne": {
+                if (!op.document)
+                  throw new Error("insertOne requires document");
+                const r = await coll.insertOne(op.document, { session });
+                txResults.push({
+                  op: "insertOne",
+                  collection: op.collection,
+                  insertedId: r.insertedId.toString(),
+                });
+                break;
+              }
+
+              case "insertMany": {
+                if (!op.documents || !Array.isArray(op.documents))
+                  throw new Error("insertMany requires documents array");
+                const r = await coll.insertMany(op.documents, {
+                  session,
+                  ordered: op.ordered !== false,
+                });
+                txResults.push({
+                  op: "insertMany",
+                  collection: op.collection,
+                  insertedCount: r.insertedCount,
+                });
+                break;
+              }
+
+              case "updateOne": {
+                if (!op.filter || !op.update)
+                  throw new Error("updateOne requires filter and update");
+                const r = await coll.updateOne(op.filter, op.update, {
+                  session,
+                  upsert: op.upsert === true,
+                });
+                txResults.push({
+                  op: "updateOne",
+                  collection: op.collection,
+                  matchedCount: r.matchedCount,
+                  modifiedCount: r.modifiedCount,
+                  upsertedId: r.upsertedId?.toString() || null,
+                });
+                break;
+              }
+
+              case "updateMany": {
+                if (!op.filter || !op.update)
+                  throw new Error("updateMany requires filter and update");
+                const r = await coll.updateMany(op.filter, op.update, {
+                  session,
+                  upsert: op.upsert === true,
+                });
+                txResults.push({
+                  op: "updateMany",
+                  collection: op.collection,
+                  matchedCount: r.matchedCount,
+                  modifiedCount: r.modifiedCount,
+                  upsertedId: r.upsertedId?.toString() || null,
+                });
+                break;
+              }
+
+              case "replaceOne": {
+                if (!op.filter || !op.document)
+                  throw new Error("replaceOne requires filter and document");
+                const r = await coll.replaceOne(op.filter, op.document, {
+                  session,
+                  upsert: op.upsert === true,
+                });
+                txResults.push({
+                  op: "replaceOne",
+                  collection: op.collection,
+                  matchedCount: r.matchedCount,
+                  modifiedCount: r.modifiedCount,
+                  upsertedId: r.upsertedId?.toString() || null,
+                });
+                break;
+              }
+
+              case "deleteOne": {
+                if (!op.filter)
+                  throw new Error("deleteOne requires filter");
+                const r = await coll.deleteOne(op.filter, { session });
+                txResults.push({
+                  op: "deleteOne",
+                  collection: op.collection,
+                  deletedCount: r.deletedCount,
+                });
+                break;
+              }
+
+              case "deleteMany": {
+                if (!op.filter)
+                  throw new Error("deleteMany requires filter");
+                const r = await coll.deleteMany(op.filter, { session });
+                txResults.push({
+                  op: "deleteMany",
+                  collection: op.collection,
+                  deletedCount: r.deletedCount,
+                });
+                break;
+              }
+
+              case "findOne": {
+                const opts = { session };
+                if (op.projection) opts.projection = op.projection;
+                const doc = await coll.findOne(op.filter || {}, opts);
+                txResults.push({
+                  op: "findOne",
+                  collection: op.collection,
+                  document: doc,
+                });
+                break;
+              }
+
+              case "findOneAndUpdate": {
+                if (!op.filter || !op.update)
+                  throw new Error(
+                    "findOneAndUpdate requires filter and update",
+                  );
+                const opts = {
+                  session,
+                  upsert: op.upsert === true,
+                  returnDocument:
+                    op.returnDocument === "before" ? "before" : "after",
+                };
+                if (op.projection) opts.projection = op.projection;
+                if (op.sort) opts.sort = op.sort;
+                const doc = await coll.findOneAndUpdate(
+                  op.filter,
+                  op.update,
+                  opts,
+                );
+                txResults.push({
+                  op: "findOneAndUpdate",
+                  collection: op.collection,
+                  document: doc,
+                });
+                break;
+              }
+
+              case "findOneAndDelete": {
+                const opts = { session };
+                if (op.projection) opts.projection = op.projection;
+                if (op.sort) opts.sort = op.sort;
+                const doc = await coll.findOneAndDelete(
+                  op.filter || {},
+                  opts,
+                );
+                txResults.push({
+                  op: "findOneAndDelete",
+                  collection: op.collection,
+                  document: doc,
+                });
+                break;
+              }
+
+              default:
+                throw new Error(
+                  `Unknown transaction op: ${op.op}. Available: insertOne, insertMany, updateOne, updateMany, replaceOne, deleteOne, deleteMany, findOne, findOneAndUpdate, findOneAndDelete`,
+                );
+            }
+          }
+        });
+
+        core.setOutput(
+          "result",
+          JSON.stringify({ committed: true, operations: txResults }),
+        );
+      } catch (txError) {
+        core.setOutput(
+          "result",
+          JSON.stringify({ committed: false, error: txError.message }),
+        );
+        throw txError;
+      } finally {
+        await session.endSession();
+      }
+      return;
+    }
+
     // --- Collection-level commands ---
 
     if (!collectionName) {
@@ -65380,7 +65586,7 @@ async function run() {
 
       default:
         throw new Error(
-          `Unknown command: ${command}. Available: find-one, find, count, estimated-count, distinct, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, find-one-and-update, find-one-and-replace, find-one-and-delete, bulk-write, aggregate, create-index, create-indexes, drop-index, drop-indexes, list-indexes, list-collections, create-collection, drop-collection, rename-collection, collection-stats, db-stats, run-command`,
+          `Unknown command: ${command}. Available: find-one, find, count, estimated-count, distinct, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, find-one-and-update, find-one-and-replace, find-one-and-delete, bulk-write, transaction, aggregate, create-index, create-indexes, drop-index, drop-indexes, list-indexes, list-collections, create-collection, drop-collection, rename-collection, collection-stats, db-stats, drop-database, run-command`,
         );
     }
 

@@ -4,7 +4,7 @@ author: 'w3-io'
 
 inputs:
   command:
-    description: 'Operation: find-one, find, count, estimated-count, distinct, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, find-one-and-update, find-one-and-replace, find-one-and-delete, bulk-write, aggregate, create-index, create-indexes, drop-index, drop-indexes, list-indexes, list-collections, create-collection, drop-collection, rename-collection, collection-stats, db-stats, run-command'
+    description: 'Operation: find-one, find, count, estimated-count, distinct, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, find-one-and-update, find-one-and-replace, find-one-and-delete, bulk-write, transaction, aggregate, create-index, create-indexes, drop-index, drop-indexes, list-indexes, list-collections, create-collection, drop-collection, rename-collection, collection-stats, db-stats, drop-database, run-command'
     required: true
   url:
     description: 'MongoDB connection string (mongodb+srv://user:pass@cluster/db or mongodb://host:port/db)'
