@@ -1,0 +1,79 @@
+name: 'W3 MongoDB Action'
+description: 'MongoDB document store, queries, aggregations, and indexes for W3 workflows'
+author: 'w3-io'
+
+inputs:
+  command:
+    description: 'Operation: find-one, find, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, count, distinct, aggregate, create-index, drop-index, list-indexes, list-collections'
+    required: true
+  url:
+    description: 'MongoDB connection string (mongodb+srv://user:pass@cluster/db or mongodb://host:port/db)'
+    required: true
+  collection:
+    description: 'Collection name'
+    required: false
+    default: ''
+  filter:
+    description: 'Query filter as JSON (for find, update, delete, count, distinct)'
+    required: false
+    default: '{}'
+  document:
+    description: 'Document as JSON (for insert-one, replace-one)'
+    required: false
+    default: ''
+  documents:
+    description: 'Array of documents as JSON (for insert-many)'
+    required: false
+    default: ''
+  update:
+    description: 'Update operations as JSON (for update-one, update-many)'
+    required: false
+    default: ''
+  pipeline:
+    description: 'Aggregation pipeline as JSON array (for aggregate)'
+    required: false
+    default: ''
+  projection:
+    description: 'Fields to include/exclude as JSON (for find, find-one)'
+    required: false
+    default: ''
+  sort:
+    description: 'Sort specification as JSON (for find)'
+    required: false
+    default: ''
+  limit:
+    description: 'Max documents to return (for find)'
+    required: false
+    default: ''
+  skip:
+    description: 'Documents to skip (for find)'
+    required: false
+    default: ''
+  field:
+    description: 'Field name (for distinct, create-index)'
+    required: false
+    default: ''
+  index:
+    description: 'Index specification as JSON (for create-index)'
+    required: false
+    default: ''
+  index-options:
+    description: 'Index options as JSON (for create-index, e.g. {"unique": true})'
+    required: false
+    default: ''
+  index-name:
+    description: 'Index name (for drop-index)'
+    required: false
+    default: ''
+  upsert:
+    description: 'Insert if no match found (for update-one, update-many, replace-one)'
+    required: false
+    default: 'false'
+
+outputs:
+  result:
+    description: 'Command result as JSON string'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
