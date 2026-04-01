@@ -1,93 +1,236 @@
 # W3 MongoDB Action
 
-MongoDB document store, queries, aggregations, and indexes for W3 workflows.
+Complete MongoDB API for W3 workflows. 28 commands covering documents, queries, aggregations, atomic operations, bulk writes, indexes, and collection management.
 
 ## Commands
 
+### Read
+
 | Command | Description |
 |---------|-------------|
-| `find-one` | Find a single document |
-| `find` | Find multiple documents |
-| `insert-one` | Insert a document |
-| `insert-many` | Insert multiple documents |
-| `update-one` | Update a single document |
-| `update-many` | Update multiple documents |
-| `replace-one` | Replace a single document |
-| `delete-one` | Delete a single document |
-| `delete-many` | Delete multiple documents |
-| `count` | Count matching documents |
+| `find-one` | Find a single document matching a filter |
+| `find` | Find multiple documents with filter, sort, skip, limit, projection |
+| `count` | Count documents matching a filter |
+| `estimated-count` | Fast approximate count using collection metadata |
 | `distinct` | Get distinct values for a field |
+
+### Write
+
+| Command | Description |
+|---------|-------------|
+| `insert-one` | Insert a single document |
+| `insert-many` | Insert multiple documents (ordered or unordered) |
+| `update-one` | Update the first document matching a filter |
+| `update-many` | Update all documents matching a filter |
+| `replace-one` | Replace a document entirely |
+| `delete-one` | Delete the first document matching a filter |
+| `delete-many` | Delete all documents matching a filter |
+
+### Atomic Find-and-Modify
+
+| Command | Description |
+|---------|-------------|
+| `find-one-and-update` | Atomically find and update, return the document |
+| `find-one-and-replace` | Atomically find and replace, return the document |
+| `find-one-and-delete` | Atomically find and delete, return the document |
+
+### Bulk
+
+| Command | Description |
+|---------|-------------|
+| `bulk-write` | Execute mixed insert/update/delete operations in one call |
+
+### Aggregation
+
+| Command | Description |
+|---------|-------------|
 | `aggregate` | Run an aggregation pipeline |
-| `create-index` | Create an index |
-| `drop-index` | Drop an index |
-| `list-indexes` | List indexes on a collection |
+
+### Indexes
+
+| Command | Description |
+|---------|-------------|
+| `create-index` | Create a single index |
+| `create-indexes` | Create multiple indexes at once |
+| `drop-index` | Drop a named index |
+| `drop-indexes` | Drop all non-_id indexes |
+| `list-indexes` | List all indexes on a collection |
+
+### Collection & Database Management
+
+| Command | Description |
+|---------|-------------|
 | `list-collections` | List all collections in the database |
+| `create-collection` | Create a collection (with optional schema validation, capped, timeseries) |
+| `drop-collection` | Drop a collection |
+| `rename-collection` | Rename a collection |
+| `collection-stats` | Get collection statistics (count, size, index info) |
+| `db-stats` | Get database statistics |
+| `run-command` | Execute an arbitrary database command |
 
 ## Usage
 
+### Basic CRUD
+
 ```yaml
+# Insert
 - uses: w3/mongodb@v1
   with:
     command: insert-one
     url: ${{ secrets.MONGODB_URL }}
     collection: events
-    document: '{"type": "payment", "amount": 100, "ts": "${{ steps.now.outputs.result }}"}'
+    document: '{"type": "payment", "amount": 100}'
 
+# Find with sort and limit
 - uses: w3/mongodb@v1
   with:
     command: find
     url: ${{ secrets.MONGODB_URL }}
     collection: events
     filter: '{"type": "payment"}'
-    sort: '{"ts": -1}'
+    sort: '{"amount": -1}'
     limit: '10'
+    projection: '{"type": 1, "amount": 1, "_id": 0}'
 
-- uses: w3/mongodb@v1
-  with:
-    command: aggregate
-    url: ${{ secrets.MONGODB_URL }}
-    collection: events
-    pipeline: '[{"$group": {"_id": "$type", "total": {"$sum": "$amount"}}}, {"$sort": {"total": -1}}]'
-
+# Update with upsert
 - uses: w3/mongodb@v1
   with:
     command: update-one
     url: ${{ secrets.MONGODB_URL }}
     collection: users
     filter: '{"email": "alice@example.com"}'
-    update: '{"$set": {"lastLogin": "${{ steps.now.outputs.result }}"}}'
+    update: '{"$set": {"lastLogin": "2026-04-01"}, "$inc": {"loginCount": 1}}'
     upsert: 'true'
+```
 
+### Atomic Operations
+
+```yaml
+# Atomically dequeue the next pending job
+- uses: w3/mongodb@v1
+  with:
+    command: find-one-and-update
+    url: ${{ secrets.MONGODB_URL }}
+    collection: jobs
+    filter: '{"status": "pending"}'
+    update: '{"$set": {"status": "processing", "worker": "node-1"}}'
+    sort: '{"priority": -1, "createdAt": 1}'
+    return-document: after
+```
+
+### Bulk Write
+
+```yaml
+- uses: w3/mongodb@v1
+  with:
+    command: bulk-write
+    url: ${{ secrets.MONGODB_URL }}
+    collection: inventory
+    operations: |
+      [
+        {"insertOne": {"document": {"sku": "A1", "qty": 100}}},
+        {"updateOne": {"filter": {"sku": "B2"}, "update": {"$inc": {"qty": -5}}}},
+        {"deleteOne": {"filter": {"sku": "C3", "qty": 0}}}
+      ]
+    ordered: 'false'
+```
+
+### Aggregation
+
+```yaml
+- uses: w3/mongodb@v1
+  with:
+    command: aggregate
+    url: ${{ secrets.MONGODB_URL }}
+    collection: orders
+    pipeline: |
+      [
+        {"$match": {"status": "completed"}},
+        {"$group": {"_id": "$product", "revenue": {"$sum": "$total"}}},
+        {"$sort": {"revenue": -1}},
+        {"$limit": 10}
+      ]
+```
+
+### Indexes
+
+```yaml
+# Create a compound index
 - uses: w3/mongodb@v1
   with:
     command: create-index
     url: ${{ secrets.MONGODB_URL }}
     collection: events
-    index: '{"type": 1, "ts": -1}'
-    index-options: '{"name": "type_ts_idx"}'
+    index: '{"type": 1, "createdAt": -1}'
+    index-options: '{"name": "type_date_idx", "background": true}'
+
+# Create multiple indexes at once
+- uses: w3/mongodb@v1
+  with:
+    command: create-indexes
+    url: ${{ secrets.MONGODB_URL }}
+    collection: users
+    operations: |
+      [
+        {"key": {"email": 1}, "unique": true},
+        {"key": {"createdAt": -1}, "expireAfterSeconds": 2592000}
+      ]
+```
+
+### Collection Management
+
+```yaml
+# Create a capped collection
+- uses: w3/mongodb@v1
+  with:
+    command: create-collection
+    url: ${{ secrets.MONGODB_URL }}
+    collection: logs
+    options: '{"capped": true, "size": 104857600, "max": 100000}'
+
+# Create a timeseries collection
+- uses: w3/mongodb@v1
+  with:
+    command: create-collection
+    url: ${{ secrets.MONGODB_URL }}
+    collection: metrics
+    options: '{"timeseries": {"timeField": "ts", "metaField": "source", "granularity": "minutes"}}'
+
+# Run an arbitrary command
+- uses: w3/mongodb@v1
+  with:
+    command: run-command
+    url: ${{ secrets.MONGODB_URL }}
+    db-command: '{"ping": 1}'
 ```
 
 ## Inputs
 
 | Input | Required | Description |
 |-------|----------|-------------|
-| `command` | Yes | Operation to perform |
+| `command` | Yes | Operation to perform (28 commands) |
 | `url` | Yes | MongoDB connection string |
-| `collection` | No | Collection name (required for all except `list-collections`) |
+| `collection` | No | Collection name |
 | `filter` | No | Query filter as JSON (default: `{}`) |
-| `document` | No | Document as JSON (for insert-one, replace-one) |
-| `documents` | No | Array of documents as JSON (for insert-many) |
-| `update` | No | Update operations as JSON (for update-one, update-many) |
+| `document` | No | Document as JSON |
+| `documents` | No | Array of documents as JSON |
+| `update` | No | Update operations as JSON |
 | `pipeline` | No | Aggregation pipeline as JSON array |
 | `projection` | No | Fields to include/exclude as JSON |
 | `sort` | No | Sort specification as JSON |
 | `limit` | No | Max documents to return |
 | `skip` | No | Documents to skip |
-| `field` | No | Field name (for distinct, create-index) |
+| `field` | No | Field name (for distinct) |
 | `index` | No | Index specification as JSON |
 | `index-options` | No | Index options as JSON |
 | `index-name` | No | Index name (for drop-index) |
 | `upsert` | No | Insert if no match (default: `false`) |
+| `ordered` | No | Execute in order (default: `true`) |
+| `operations` | No | Array of operations as JSON (for bulk-write, create-indexes) |
+| `options` | No | Collection options as JSON (for create-collection) |
+| `new-name` | No | New name (for rename-collection) |
+| `return-document` | No | Return `before` or `after` modification (default: `after`) |
+| `db-command` | No | Arbitrary database command as JSON |
 
 ## Outputs
 
@@ -97,7 +240,7 @@ MongoDB document store, queries, aggregations, and indexes for W3 workflows.
 
 ## Connection
 
-Supports both Atlas and self-hosted:
+Supports Atlas, self-hosted, and replica sets:
 
 ```
 # Atlas
@@ -105,6 +248,9 @@ mongodb+srv://user:pass@cluster.mongodb.net/mydb
 
 # Self-hosted
 mongodb://user:pass@host:27017/mydb
+
+# Replica set
+mongodb://host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0
 ```
 
 The database name is extracted from the connection string.

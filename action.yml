@@ -1,10 +1,10 @@
 name: 'W3 MongoDB Action'
-description: 'MongoDB document store, queries, aggregations, and indexes for W3 workflows'
+description: 'Complete MongoDB API: documents, queries, aggregations, atomic operations, bulk writes, indexes, and collection management for W3 workflows'
 author: 'w3-io'
 
 inputs:
   command:
-    description: 'Operation: find-one, find, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, count, distinct, aggregate, create-index, drop-index, list-indexes, list-collections'
+    description: 'Operation: find-one, find, count, estimated-count, distinct, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, find-one-and-update, find-one-and-replace, find-one-and-delete, bulk-write, aggregate, create-index, create-indexes, drop-index, drop-indexes, list-indexes, list-collections, create-collection, drop-collection, rename-collection, collection-stats, db-stats, run-command'
     required: true
   url:
     description: 'MongoDB connection string (mongodb+srv://user:pass@cluster/db or mongodb://host:port/db)'
@@ -18,7 +18,7 @@ inputs:
     required: false
     default: '{}'
   document:
-    description: 'Document as JSON (for insert-one, replace-one)'
+    description: 'Document as JSON (for insert-one, replace-one, find-one-and-replace)'
     required: false
     default: ''
   documents:
@@ -26,7 +26,7 @@ inputs:
     required: false
     default: ''
   update:
-    description: 'Update operations as JSON (for update-one, update-many)'
+    description: 'Update operations as JSON (for update-one, update-many, find-one-and-update)'
     required: false
     default: ''
   pipeline:
@@ -34,11 +34,11 @@ inputs:
     required: false
     default: ''
   projection:
-    description: 'Fields to include/exclude as JSON (for find, find-one)'
+    description: 'Fields to include/exclude as JSON (for find, find-one, find-one-and-*)'
     required: false
     default: ''
   sort:
-    description: 'Sort specification as JSON (for find)'
+    description: 'Sort specification as JSON (for find, find-one-and-*)'
     required: false
     default: ''
   limit:
@@ -50,7 +50,7 @@ inputs:
     required: false
     default: ''
   field:
-    description: 'Field name (for distinct, create-index)'
+    description: 'Field name (for distinct)'
     required: false
     default: ''
   index:
@@ -66,9 +66,33 @@ inputs:
     required: false
     default: ''
   upsert:
-    description: 'Insert if no match found (for update-one, update-many, replace-one)'
+    description: 'Insert if no match found (for update-one, update-many, replace-one, find-one-and-*)'
     required: false
     default: 'false'
+  ordered:
+    description: 'Execute operations in order (for insert-many, bulk-write; default: true)'
+    required: false
+    default: 'true'
+  operations:
+    description: 'Array of operations as JSON (for bulk-write, create-indexes)'
+    required: false
+    default: ''
+  options:
+    description: 'Collection options as JSON (for create-collection, e.g. capped, timeseries, validator)'
+    required: false
+    default: ''
+  new-name:
+    description: 'New collection name (for rename-collection)'
+    required: false
+    default: ''
+  return-document:
+    description: 'Return document before or after modification (for find-one-and-*; default: after)'
+    required: false
+    default: 'after'
+  db-command:
+    description: 'Arbitrary database command as JSON (for run-command)'
+    required: false
+    default: ''
 
 outputs:
   result:

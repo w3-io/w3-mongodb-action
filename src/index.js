@@ -21,6 +21,12 @@ async function run() {
     const indexOptionsStr = core.getInput("index-options") || "";
     const indexName = core.getInput("index-name") || "";
     const upsert = core.getInput("upsert") === "true";
+    const ordered = core.getInput("ordered") !== "false"; // default true
+    const operationsStr = core.getInput("operations") || "";
+    const optionsStr = core.getInput("options") || "";
+    const newCollectionName = core.getInput("new-name") || "";
+    const returnDocument = core.getInput("return-document") || "after";
+    const commandStr = core.getInput("db-command") || "";
 
     // Parse JSON inputs
     const filter = JSON.parse(filterStr);
@@ -36,19 +42,69 @@ async function run() {
     });
     await client.connect();
 
-    // Extract database name from connection string
     const db = client.db();
 
-    // Commands that don't need a collection
+    // --- Database-level commands (no collection needed) ---
+
     if (command === "list-collections") {
       const collections = await db.listCollections().toArray();
       const result = collections.map((c) => ({
         name: c.name,
         type: c.type,
+        options: c.options,
       }));
       core.setOutput("result", JSON.stringify(result));
       return;
     }
+
+    if (command === "create-collection") {
+      if (!collectionName)
+        throw new Error("collection is required for create-collection");
+      const options = optionsStr ? JSON.parse(optionsStr) : {};
+      await db.createCollection(collectionName, options);
+      core.setOutput("result", JSON.stringify({ created: collectionName }));
+      return;
+    }
+
+    if (command === "drop-collection") {
+      if (!collectionName)
+        throw new Error("collection is required for drop-collection");
+      const dropped = await db.collection(collectionName).drop().catch((e) => {
+        if (e.codeName === "NamespaceNotFound") return false;
+        throw e;
+      });
+      core.setOutput("result", JSON.stringify({ dropped }));
+      return;
+    }
+
+    if (command === "rename-collection") {
+      if (!collectionName)
+        throw new Error("collection is required for rename-collection");
+      if (!newCollectionName)
+        throw new Error("new-name is required for rename-collection");
+      await db.collection(collectionName).rename(newCollectionName);
+      core.setOutput(
+        "result",
+        JSON.stringify({ from: collectionName, to: newCollectionName }),
+      );
+      return;
+    }
+
+    if (command === "db-stats") {
+      const stats = await db.stats();
+      core.setOutput("result", JSON.stringify(stats));
+      return;
+    }
+
+    if (command === "run-command") {
+      if (!commandStr) throw new Error("db-command is required for run-command");
+      const dbCommand = JSON.parse(commandStr);
+      const commandResult = await db.command(dbCommand);
+      core.setOutput("result", JSON.stringify(commandResult));
+      return;
+    }
+
+    // --- Collection-level commands ---
 
     if (!collectionName) {
       throw new Error(`Collection name required for command: ${command}`);
@@ -58,7 +114,9 @@ async function run() {
     let result;
 
     switch (command) {
-      // --- Read operations ---
+      // -----------------------------------------------------------------
+      // Read operations
+      // -----------------------------------------------------------------
 
       case "find-one": {
         const options = {};
@@ -82,16 +140,24 @@ async function run() {
         break;
       }
 
+      case "estimated-count": {
+        result = await collection.estimatedDocumentCount();
+        break;
+      }
+
       case "distinct": {
         if (!field) throw new Error("field is required for distinct");
         result = await collection.distinct(field, filter);
         break;
       }
 
-      // --- Write operations ---
+      // -----------------------------------------------------------------
+      // Write operations
+      // -----------------------------------------------------------------
 
       case "insert-one": {
-        if (!documentStr) throw new Error("document is required for insert-one");
+        if (!documentStr)
+          throw new Error("document is required for insert-one");
         const doc = JSON.parse(documentStr);
         const insertResult = await collection.insertOne(doc);
         result = { insertedId: insertResult.insertedId.toString() };
@@ -102,8 +168,9 @@ async function run() {
         if (!documentsStr)
           throw new Error("documents is required for insert-many");
         const docs = JSON.parse(documentsStr);
-        if (!Array.isArray(docs)) throw new Error("documents must be a JSON array");
-        const insertResult = await collection.insertMany(docs);
+        if (!Array.isArray(docs))
+          throw new Error("documents must be a JSON array");
+        const insertResult = await collection.insertMany(docs, { ordered });
         result = {
           insertedCount: insertResult.insertedCount,
           insertedIds: Object.fromEntries(
@@ -148,9 +215,11 @@ async function run() {
         if (!documentStr)
           throw new Error("document is required for replace-one");
         const replacement = JSON.parse(documentStr);
-        const replaceResult = await collection.replaceOne(filter, replacement, {
-          upsert,
-        });
+        const replaceResult = await collection.replaceOne(
+          filter,
+          replacement,
+          { upsert },
+        );
         result = {
           matchedCount: replaceResult.matchedCount,
           modifiedCount: replaceResult.modifiedCount,
@@ -171,7 +240,89 @@ async function run() {
         break;
       }
 
-      // --- Aggregation ---
+      // -----------------------------------------------------------------
+      // Atomic find-and-modify operations
+      // -----------------------------------------------------------------
+
+      case "find-one-and-update": {
+        if (!updateStr)
+          throw new Error("update is required for find-one-and-update");
+        const updateDoc = JSON.parse(updateStr);
+        const options = {
+          upsert,
+          returnDocument: returnDocument === "before" ? "before" : "after",
+        };
+        if (projection) options.projection = projection;
+        if (sort) options.sort = sort;
+        const findResult = await collection.findOneAndUpdate(
+          filter,
+          updateDoc,
+          options,
+        );
+        result = findResult;
+        break;
+      }
+
+      case "find-one-and-replace": {
+        if (!documentStr)
+          throw new Error("document is required for find-one-and-replace");
+        const replacement = JSON.parse(documentStr);
+        const options = {
+          upsert,
+          returnDocument: returnDocument === "before" ? "before" : "after",
+        };
+        if (projection) options.projection = projection;
+        if (sort) options.sort = sort;
+        const findResult = await collection.findOneAndReplace(
+          filter,
+          replacement,
+          options,
+        );
+        result = findResult;
+        break;
+      }
+
+      case "find-one-and-delete": {
+        const options = {};
+        if (projection) options.projection = projection;
+        if (sort) options.sort = sort;
+        const findResult = await collection.findOneAndDelete(filter, options);
+        result = findResult;
+        break;
+      }
+
+      // -----------------------------------------------------------------
+      // Bulk operations
+      // -----------------------------------------------------------------
+
+      case "bulk-write": {
+        if (!operationsStr)
+          throw new Error("operations is required for bulk-write");
+        const ops = JSON.parse(operationsStr);
+        if (!Array.isArray(ops))
+          throw new Error("operations must be a JSON array");
+        const bulkResult = await collection.bulkWrite(ops, { ordered });
+        result = {
+          insertedCount: bulkResult.insertedCount,
+          matchedCount: bulkResult.matchedCount,
+          modifiedCount: bulkResult.modifiedCount,
+          deletedCount: bulkResult.deletedCount,
+          upsertedCount: bulkResult.upsertedCount,
+          upsertedIds: bulkResult.upsertedIds
+            ? Object.fromEntries(
+                Object.entries(bulkResult.upsertedIds).map(([k, v]) => [
+                  k,
+                  v.toString(),
+                ]),
+              )
+            : {},
+        };
+        break;
+      }
+
+      // -----------------------------------------------------------------
+      // Aggregation
+      // -----------------------------------------------------------------
 
       case "aggregate": {
         if (!pipelineStr)
@@ -183,7 +334,9 @@ async function run() {
         break;
       }
 
-      // --- Index operations ---
+      // -----------------------------------------------------------------
+      // Index operations
+      // -----------------------------------------------------------------
 
       case "create-index": {
         if (!indexStr) throw new Error("index is required for create-index");
@@ -193,10 +346,27 @@ async function run() {
         break;
       }
 
+      case "create-indexes": {
+        if (!operationsStr)
+          throw new Error("operations is required for create-indexes");
+        const indexSpecs = JSON.parse(operationsStr);
+        if (!Array.isArray(indexSpecs))
+          throw new Error("operations must be a JSON array of index specs");
+        result = await collection.createIndexes(indexSpecs);
+        break;
+      }
+
       case "drop-index": {
-        if (!indexName) throw new Error("index-name is required for drop-index");
+        if (!indexName)
+          throw new Error("index-name is required for drop-index");
         await collection.dropIndex(indexName);
         result = { dropped: indexName };
+        break;
+      }
+
+      case "drop-indexes": {
+        await collection.dropIndexes();
+        result = { dropped: "all non-_id indexes" };
         break;
       }
 
@@ -205,9 +375,26 @@ async function run() {
         break;
       }
 
+      // -----------------------------------------------------------------
+      // Collection info
+      // -----------------------------------------------------------------
+
+      case "collection-stats": {
+        const stats = await db.command({ collStats: collectionName });
+        result = {
+          count: stats.count,
+          size: stats.size,
+          avgObjSize: stats.avgObjSize,
+          storageSize: stats.storageSize,
+          totalIndexSize: stats.totalIndexSize,
+          indexSizes: stats.indexSizes,
+        };
+        break;
+      }
+
       default:
         throw new Error(
-          `Unknown command: ${command}. Available: find-one, find, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, count, distinct, aggregate, create-index, drop-index, list-indexes, list-collections`,
+          `Unknown command: ${command}. Available: find-one, find, count, estimated-count, distinct, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, find-one-and-update, find-one-and-replace, find-one-and-delete, bulk-write, aggregate, create-index, create-indexes, drop-index, drop-indexes, list-indexes, list-collections, create-collection, drop-collection, rename-collection, collection-stats, db-stats, run-command`,
         );
     }
 
