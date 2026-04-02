@@ -604,7 +604,8 @@ async function run() {
         );
     }
 
-    core.setOutput("result", JSON.stringify(result));
+    const output = typeof result === "string" ? result : JSON.stringify(result);
+    core.setOutput("result", output);
   } catch (error) {
     core.setFailed(error.message);
   } finally {
