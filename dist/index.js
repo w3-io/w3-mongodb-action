@@ -65347,7 +65347,7 @@ function collHandler(fn) {
     const result = await withClient(inputs.url, async (client) => {
       const db = client.db()
       if (!inputs.collectionName) {
-        throw new Error('Collection name required for this command')
+        throw new error_W3ActionError('MISSING_INPUT', 'Collection name required for this command')
       }
       const collection = db.collection(inputs.collectionName)
       return fn(collection, db, inputs)
@@ -65374,7 +65374,7 @@ const router = createCommandRouter({
 
   'create-collection': dbHandler(async (db, _client, inputs) => {
     if (!inputs.collectionName)
-      throw new Error('collection is required for create-collection')
+      throw new error_W3ActionError('MISSING_INPUT', 'collection is required for create-collection')
     const options = inputs.optionsStr ? JSON.parse(inputs.optionsStr) : {}
     await db.createCollection(inputs.collectionName, options)
     return { created: inputs.collectionName }
@@ -65382,7 +65382,7 @@ const router = createCommandRouter({
 
   'drop-collection': dbHandler(async (db, _client, inputs) => {
     if (!inputs.collectionName)
-      throw new Error('collection is required for drop-collection')
+      throw new error_W3ActionError('MISSING_INPUT', 'collection is required for drop-collection')
     const dropped = await db.collection(inputs.collectionName).drop().catch((e) => {
       if (e.codeName === 'NamespaceNotFound') return false
       throw e
@@ -65392,9 +65392,9 @@ const router = createCommandRouter({
 
   'rename-collection': dbHandler(async (db, _client, inputs) => {
     if (!inputs.collectionName)
-      throw new Error('collection is required for rename-collection')
+      throw new error_W3ActionError('MISSING_INPUT', 'collection is required for rename-collection')
     if (!inputs.newCollectionName)
-      throw new Error('new-name is required for rename-collection')
+      throw new error_W3ActionError('MISSING_INPUT', 'new-name is required for rename-collection')
     await db.collection(inputs.collectionName).rename(inputs.newCollectionName)
     return { from: inputs.collectionName, to: inputs.newCollectionName }
   }),
@@ -65404,7 +65404,7 @@ const router = createCommandRouter({
   }),
 
   'run-command': dbHandler(async (db, _client, inputs) => {
-    if (!inputs.commandStr) throw new Error('db-command is required for run-command')
+    if (!inputs.commandStr) throw new error_W3ActionError('MISSING_INPUT', 'db-command is required for run-command')
     const dbCommand = JSON.parse(inputs.commandStr)
     return db.command(dbCommand)
   }),
@@ -65416,10 +65416,10 @@ const router = createCommandRouter({
 
   transaction: dbHandler(async (db, client, inputs) => {
     if (!inputs.operationsStr)
-      throw new Error('operations is required for transaction')
+      throw new error_W3ActionError('MISSING_INPUT', 'operations is required for transaction')
     const txOps = JSON.parse(inputs.operationsStr)
     if (!Array.isArray(txOps))
-      throw new Error('operations must be a JSON array')
+      throw new error_W3ActionError('MISSING_INPUT', 'operations must be a JSON array')
 
     const session = client.startSession()
     const txResults = []
@@ -65427,13 +65427,13 @@ const router = createCommandRouter({
       await session.withTransaction(async () => {
         for (const op of txOps) {
           if (!op.collection)
-            throw new Error('Each transaction operation must specify a collection')
-          if (!op.op) throw new Error('Each transaction operation must specify an op')
+            throw new error_W3ActionError('MISSING_INPUT', 'Each transaction operation must specify a collection')
+          if (!op.op) throw new error_W3ActionError('MISSING_INPUT', 'Each transaction operation must specify an op')
           const coll = db.collection(op.collection)
 
           switch (op.op) {
             case 'insertOne': {
-              if (!op.document) throw new Error('insertOne requires document')
+              if (!op.document) throw new error_W3ActionError('MISSING_INPUT', 'insertOne requires document')
               const r = await coll.insertOne(op.document, { session })
               txResults.push({
                 op: 'insertOne',
@@ -65445,7 +65445,7 @@ const router = createCommandRouter({
 
             case 'insertMany': {
               if (!op.documents || !Array.isArray(op.documents))
-                throw new Error('insertMany requires documents array')
+                throw new error_W3ActionError('MISSING_INPUT', 'insertMany requires documents array')
               const r = await coll.insertMany(op.documents, {
                 session,
                 ordered: op.ordered !== false,
@@ -65460,7 +65460,7 @@ const router = createCommandRouter({
 
             case 'updateOne': {
               if (!op.filter || !op.update)
-                throw new Error('updateOne requires filter and update')
+                throw new error_W3ActionError('MISSING_INPUT', 'updateOne requires filter and update')
               const r = await coll.updateOne(op.filter, op.update, {
                 session,
                 upsert: op.upsert === true,
@@ -65477,7 +65477,7 @@ const router = createCommandRouter({
 
             case 'updateMany': {
               if (!op.filter || !op.update)
-                throw new Error('updateMany requires filter and update')
+                throw new error_W3ActionError('MISSING_INPUT', 'updateMany requires filter and update')
               const r = await coll.updateMany(op.filter, op.update, {
                 session,
                 upsert: op.upsert === true,
@@ -65494,7 +65494,7 @@ const router = createCommandRouter({
 
             case 'replaceOne': {
               if (!op.filter || !op.document)
-                throw new Error('replaceOne requires filter and document')
+                throw new error_W3ActionError('MISSING_INPUT', 'replaceOne requires filter and document')
               const r = await coll.replaceOne(op.filter, op.document, {
                 session,
                 upsert: op.upsert === true,
@@ -65510,7 +65510,7 @@ const router = createCommandRouter({
             }
 
             case 'deleteOne': {
-              if (!op.filter) throw new Error('deleteOne requires filter')
+              if (!op.filter) throw new error_W3ActionError('MISSING_INPUT', 'deleteOne requires filter')
               const r = await coll.deleteOne(op.filter, { session })
               txResults.push({
                 op: 'deleteOne',
@@ -65521,7 +65521,7 @@ const router = createCommandRouter({
             }
 
             case 'deleteMany': {
-              if (!op.filter) throw new Error('deleteMany requires filter')
+              if (!op.filter) throw new error_W3ActionError('MISSING_INPUT', 'deleteMany requires filter')
               const r = await coll.deleteMany(op.filter, { session })
               txResults.push({
                 op: 'deleteMany',
@@ -65545,7 +65545,7 @@ const router = createCommandRouter({
 
             case 'findOneAndUpdate': {
               if (!op.filter || !op.update)
-                throw new Error('findOneAndUpdate requires filter and update')
+                throw new error_W3ActionError('MISSING_INPUT', 'findOneAndUpdate requires filter and update')
               const opts = {
                 session,
                 upsert: op.upsert === true,
@@ -65576,7 +65576,8 @@ const router = createCommandRouter({
             }
 
             default:
-              throw new Error(
+              throw new error_W3ActionError(
+                'UNKNOWN_COMMAND',
                 `Unknown transaction op: ${op.op}. Available: insertOne, insertMany, updateOne, updateMany, replaceOne, deleteOne, deleteMany, findOne, findOneAndUpdate, findOneAndDelete`,
               )
           }
@@ -65620,7 +65621,7 @@ const router = createCommandRouter({
   }),
 
   distinct: collHandler(async (collection, _db, inputs) => {
-    if (!inputs.field) throw new Error('field is required for distinct')
+    if (!inputs.field) throw new error_W3ActionError('MISSING_INPUT', 'field is required for distinct')
     return collection.distinct(inputs.field, inputs.filter)
   }),
 
@@ -65630,7 +65631,7 @@ const router = createCommandRouter({
 
   'insert-one': collHandler(async (collection, _db, inputs) => {
     if (!inputs.documentStr)
-      throw new Error('document is required for insert-one')
+      throw new error_W3ActionError('MISSING_INPUT', 'document is required for insert-one')
     const doc = JSON.parse(inputs.documentStr)
     const insertResult = await collection.insertOne(doc)
     return { insertedId: insertResult.insertedId.toString() }
@@ -65638,10 +65639,10 @@ const router = createCommandRouter({
 
   'insert-many': collHandler(async (collection, _db, inputs) => {
     if (!inputs.documentsStr)
-      throw new Error('documents is required for insert-many')
+      throw new error_W3ActionError('MISSING_INPUT', 'documents is required for insert-many')
     const docs = JSON.parse(inputs.documentsStr)
     if (!Array.isArray(docs))
-      throw new Error('documents must be a JSON array')
+      throw new error_W3ActionError('MISSING_INPUT', 'documents must be a JSON array')
     const insertResult = await collection.insertMany(docs, { ordered: inputs.ordered })
     return {
       insertedCount: insertResult.insertedCount,
@@ -65652,7 +65653,7 @@ const router = createCommandRouter({
   }),
 
   'update-one': collHandler(async (collection, _db, inputs) => {
-    if (!inputs.updateStr) throw new Error('update is required for update-one')
+    if (!inputs.updateStr) throw new error_W3ActionError('MISSING_INPUT', 'update is required for update-one')
     const updateDoc = JSON.parse(inputs.updateStr)
     const updateResult = await collection.updateOne(inputs.filter, updateDoc, {
       upsert: inputs.upsert,
@@ -65665,7 +65666,7 @@ const router = createCommandRouter({
   }),
 
   'update-many': collHandler(async (collection, _db, inputs) => {
-    if (!inputs.updateStr) throw new Error('update is required for update-many')
+    if (!inputs.updateStr) throw new error_W3ActionError('MISSING_INPUT', 'update is required for update-many')
     const updateDoc = JSON.parse(inputs.updateStr)
     const updateResult = await collection.updateMany(inputs.filter, updateDoc, {
       upsert: inputs.upsert,
@@ -65679,7 +65680,7 @@ const router = createCommandRouter({
 
   'replace-one': collHandler(async (collection, _db, inputs) => {
     if (!inputs.documentStr)
-      throw new Error('document is required for replace-one')
+      throw new error_W3ActionError('MISSING_INPUT', 'document is required for replace-one')
     const replacement = JSON.parse(inputs.documentStr)
     const replaceResult = await collection.replaceOne(inputs.filter, replacement, {
       upsert: inputs.upsert,
@@ -65707,7 +65708,7 @@ const router = createCommandRouter({
 
   'find-one-and-update': collHandler(async (collection, _db, inputs) => {
     if (!inputs.updateStr)
-      throw new Error('update is required for find-one-and-update')
+      throw new error_W3ActionError('MISSING_INPUT', 'update is required for find-one-and-update')
     const updateDoc = JSON.parse(inputs.updateStr)
     const options = {
       upsert: inputs.upsert,
@@ -65720,7 +65721,7 @@ const router = createCommandRouter({
 
   'find-one-and-replace': collHandler(async (collection, _db, inputs) => {
     if (!inputs.documentStr)
-      throw new Error('document is required for find-one-and-replace')
+      throw new error_W3ActionError('MISSING_INPUT', 'document is required for find-one-and-replace')
     const replacement = JSON.parse(inputs.documentStr)
     const options = {
       upsert: inputs.upsert,
@@ -65744,10 +65745,10 @@ const router = createCommandRouter({
 
   'bulk-write': collHandler(async (collection, _db, inputs) => {
     if (!inputs.operationsStr)
-      throw new Error('operations is required for bulk-write')
+      throw new error_W3ActionError('MISSING_INPUT', 'operations is required for bulk-write')
     const ops = JSON.parse(inputs.operationsStr)
     if (!Array.isArray(ops))
-      throw new Error('operations must be a JSON array')
+      throw new error_W3ActionError('MISSING_INPUT', 'operations must be a JSON array')
     const bulkResult = await collection.bulkWrite(ops, { ordered: inputs.ordered })
     return {
       insertedCount: bulkResult.insertedCount,
@@ -65769,10 +65770,10 @@ const router = createCommandRouter({
 
   aggregate: collHandler(async (collection, _db, inputs) => {
     if (!inputs.pipelineStr)
-      throw new Error('pipeline is required for aggregate')
+      throw new error_W3ActionError('MISSING_INPUT', 'pipeline is required for aggregate')
     const pipeline = JSON.parse(inputs.pipelineStr)
     if (!Array.isArray(pipeline))
-      throw new Error('pipeline must be a JSON array')
+      throw new error_W3ActionError('MISSING_INPUT', 'pipeline must be a JSON array')
     return collection.aggregate(pipeline).toArray()
   }),
 
@@ -65781,7 +65782,7 @@ const router = createCommandRouter({
   // -----------------------------------------------------------------
 
   'create-index': collHandler(async (collection, _db, inputs) => {
-    if (!inputs.indexStr) throw new Error('index is required for create-index')
+    if (!inputs.indexStr) throw new error_W3ActionError('MISSING_INPUT', 'index is required for create-index')
     const indexSpec = JSON.parse(inputs.indexStr)
     const options = inputs.indexOptionsStr ? JSON.parse(inputs.indexOptionsStr) : {}
     return collection.createIndex(indexSpec, options)
@@ -65789,16 +65790,16 @@ const router = createCommandRouter({
 
   'create-indexes': collHandler(async (collection, _db, inputs) => {
     if (!inputs.operationsStr)
-      throw new Error('operations is required for create-indexes')
+      throw new error_W3ActionError('MISSING_INPUT', 'operations is required for create-indexes')
     const indexSpecs = JSON.parse(inputs.operationsStr)
     if (!Array.isArray(indexSpecs))
-      throw new Error('operations must be a JSON array of index specs')
+      throw new error_W3ActionError('MISSING_INPUT', 'operations must be a JSON array of index specs')
     return collection.createIndexes(indexSpecs)
   }),
 
   'drop-index': collHandler(async (collection, _db, inputs) => {
     if (!inputs.indexName)
-      throw new Error('index-name is required for drop-index')
+      throw new error_W3ActionError('MISSING_INPUT', 'index-name is required for drop-index')
     await collection.dropIndex(inputs.indexName)
     return { dropped: inputs.indexName }
   }),
