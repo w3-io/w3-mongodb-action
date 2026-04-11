@@ -1,103 +1,103 @@
-name: 'W3 MongoDB Action'
-description: 'Complete MongoDB API: documents, queries, aggregations, atomic operations, bulk writes, indexes, and collection management for W3 workflows'
-author: 'w3-io'
+name: "W3 MongoDB Action"
+description: "Complete MongoDB API: documents, queries, aggregations, atomic operations, bulk writes, indexes, and collection management for W3 workflows"
+author: "w3-io"
 
 inputs:
   command:
-    description: 'Operation: find-one, find, count, estimated-count, distinct, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, find-one-and-update, find-one-and-replace, find-one-and-delete, bulk-write, transaction, aggregate, create-index, create-indexes, drop-index, drop-indexes, list-indexes, list-collections, create-collection, drop-collection, rename-collection, collection-stats, db-stats, drop-database, run-command'
+    description: "Operation: find-one, find, count, estimated-count, distinct, insert-one, insert-many, update-one, update-many, replace-one, delete-one, delete-many, find-one-and-update, find-one-and-replace, find-one-and-delete, bulk-write, transaction, aggregate, create-index, create-indexes, drop-index, drop-indexes, list-indexes, list-collections, create-collection, drop-collection, rename-collection, collection-stats, db-stats, drop-database, run-command"
     required: true
   url:
-    description: 'MongoDB connection string (mongodb+srv://user:pass@cluster/db or mongodb://host:port/db)'
+    description: "MongoDB connection string (mongodb+srv://user:pass@cluster/db or mongodb://host:port/db)"
     required: true
   collection:
-    description: 'Collection name'
+    description: "Collection name"
     required: false
-    default: ''
+    default: ""
   filter:
-    description: 'Query filter as JSON (for find, update, delete, count, distinct)'
+    description: "Query filter as JSON (for find, update, delete, count, distinct)"
     required: false
-    default: '{}'
+    default: "{}"
   document:
-    description: 'Document as JSON (for insert-one, replace-one, find-one-and-replace)'
+    description: "Document as JSON (for insert-one, replace-one, find-one-and-replace)"
     required: false
-    default: ''
+    default: ""
   documents:
-    description: 'Array of documents as JSON (for insert-many)'
+    description: "Array of documents as JSON (for insert-many)"
     required: false
-    default: ''
+    default: ""
   update:
-    description: 'Update operations as JSON (for update-one, update-many, find-one-and-update)'
+    description: "Update operations as JSON (for update-one, update-many, find-one-and-update)"
     required: false
-    default: ''
+    default: ""
   pipeline:
-    description: 'Aggregation pipeline as JSON array (for aggregate)'
+    description: "Aggregation pipeline as JSON array (for aggregate)"
     required: false
-    default: ''
+    default: ""
   projection:
-    description: 'Fields to include/exclude as JSON (for find, find-one, find-one-and-*)'
+    description: "Fields to include/exclude as JSON (for find, find-one, find-one-and-*)"
     required: false
-    default: ''
+    default: ""
   sort:
-    description: 'Sort specification as JSON (for find, find-one-and-*)'
+    description: "Sort specification as JSON (for find, find-one-and-*)"
     required: false
-    default: ''
+    default: ""
   limit:
-    description: 'Max documents to return (for find)'
+    description: "Max documents to return (for find)"
     required: false
-    default: ''
+    default: ""
   skip:
-    description: 'Documents to skip (for find)'
+    description: "Documents to skip (for find)"
     required: false
-    default: ''
+    default: ""
   field:
-    description: 'Field name (for distinct)'
+    description: "Field name (for distinct)"
     required: false
-    default: ''
+    default: ""
   index:
-    description: 'Index specification as JSON (for create-index)'
+    description: "Index specification as JSON (for create-index)"
     required: false
-    default: ''
+    default: ""
   index-options:
     description: 'Index options as JSON (for create-index, e.g. {"unique": true})'
     required: false
-    default: ''
+    default: ""
   index-name:
-    description: 'Index name (for drop-index)'
+    description: "Index name (for drop-index)"
     required: false
-    default: ''
+    default: ""
   upsert:
-    description: 'Insert if no match found (for update-one, update-many, replace-one, find-one-and-*)'
+    description: "Insert if no match found (for update-one, update-many, replace-one, find-one-and-*)"
     required: false
-    default: 'false'
+    default: "false"
   ordered:
-    description: 'Execute operations in order (for insert-many, bulk-write; default: true)'
+    description: "Execute operations in order (for insert-many, bulk-write; default: true)"
     required: false
-    default: 'true'
+    default: "true"
   operations:
-    description: 'Array of operations as JSON (for bulk-write, create-indexes)'
+    description: "Array of operations as JSON (for bulk-write, create-indexes)"
     required: false
-    default: ''
+    default: ""
   options:
-    description: 'Collection options as JSON (for create-collection, e.g. capped, timeseries, validator)'
+    description: "Collection options as JSON (for create-collection, e.g. capped, timeseries, validator)"
     required: false
-    default: ''
+    default: ""
   new-name:
-    description: 'New collection name (for rename-collection)'
+    description: "New collection name (for rename-collection)"
     required: false
-    default: ''
+    default: ""
   return-document:
-    description: 'Return document before or after modification (for find-one-and-*; default: after)'
+    description: "Return document before or after modification (for find-one-and-*; default: after)"
     required: false
-    default: 'after'
+    default: "after"
   db-command:
-    description: 'Arbitrary database command as JSON (for run-command)'
+    description: "Arbitrary database command as JSON (for run-command)"
     required: false
-    default: ''
+    default: ""
 
 outputs:
   result:
-    description: 'Command result as JSON string'
+    description: "Command result as JSON string"
 
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: "node20"
+  main: "dist/index.js"
