@@ -67,7 +67,7 @@ W3 workflows -- no application server required.
     collection: events
     filter: '{"type": "payment"}'
     sort: '{"amount": -1}'
-    limit: '10'
+    limit: "10"
 ```
 
 ## Read commands
@@ -76,12 +76,12 @@ W3 workflows -- no application server required.
 
 Find a single document matching a filter.
 
-| Input | Required | Description |
-| ------------ | -------- | -------------------------------- |
-| `collection` | yes | Collection name |
-| `filter` | no | Query filter as JSON (default: `{}`) |
-| `projection` | no | Fields to include/exclude |
-| `sort` | no | Sort specification |
+| Input        | Required | Description                          |
+| ------------ | -------- | ------------------------------------ |
+| `collection` | yes      | Collection name                      |
+| `filter`     | no       | Query filter as JSON (default: `{}`) |
+| `projection` | no       | Fields to include/exclude            |
+| `sort`       | no       | Sort specification                   |
 
 **Output (`result`):**
 
@@ -99,21 +99,21 @@ Returns `null` if no document matches.
 
 Find multiple documents with filter, sort, skip, limit, and projection.
 
-| Input | Required | Description |
-| ------------ | -------- | -------------------------------- |
-| `collection` | yes | Collection name |
-| `filter` | no | Query filter as JSON |
-| `projection` | no | Fields to include/exclude |
-| `sort` | no | Sort specification |
-| `limit` | no | Max documents to return |
-| `skip` | no | Documents to skip |
+| Input        | Required | Description               |
+| ------------ | -------- | ------------------------- |
+| `collection` | yes      | Collection name           |
+| `filter`     | no       | Query filter as JSON      |
+| `projection` | no       | Fields to include/exclude |
+| `sort`       | no       | Sort specification        |
+| `limit`      | no       | Max documents to return   |
+| `skip`       | no       | Documents to skip         |
 
 **Output (`result`):**
 
 ```json
 [
-  {"_id": "...", "type": "payment", "amount": 500},
-  {"_id": "...", "type": "payment", "amount": 100}
+  { "_id": "...", "type": "payment", "amount": 500 },
+  { "_id": "...", "type": "payment", "amount": 100 }
 ]
 ```
 
@@ -121,10 +121,10 @@ Find multiple documents with filter, sort, skip, limit, and projection.
 
 Count documents matching a filter.
 
-| Input | Required | Description |
-| ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
-| `filter` | no | Query filter |
+| Input        | Required | Description  |
+| ------------ | -------- | ------------ |
+| `collection` | yes      | Collection   |
+| `filter`     | no       | Query filter |
 
 **Output (`result`):** `{"count": 42}`
 
@@ -132,9 +132,9 @@ Count documents matching a filter.
 
 Fast approximate count using collection metadata. No filter supported.
 
-| Input | Required | Description |
+| Input        | Required | Description |
 | ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
+| `collection` | yes      | Collection  |
 
 **Output (`result`):** `{"count": 1000000}`
 
@@ -142,11 +142,11 @@ Fast approximate count using collection metadata. No filter supported.
 
 Get distinct values for a field across the collection.
 
-| Input | Required | Description |
-| ------------ | -------- | -------------------- |
-| `collection` | yes | Collection |
-| `field` | yes | Field name |
-| `filter` | no | Optional query filter |
+| Input        | Required | Description           |
+| ------------ | -------- | --------------------- |
+| `collection` | yes      | Collection            |
+| `field`      | yes      | Field name            |
+| `filter`     | no       | Optional query filter |
 
 **Output (`result`):** `["payment", "refund", "transfer"]`
 
@@ -154,10 +154,10 @@ Get distinct values for a field across the collection.
 
 ### insert-one
 
-| Input | Required | Description |
-| ------------ | -------- | ---------------------- |
-| `collection` | yes | Collection |
-| `document` | yes | Document as JSON |
+| Input        | Required | Description      |
+| ------------ | -------- | ---------------- |
+| `collection` | yes      | Collection       |
+| `document`   | yes      | Document as JSON |
 
 **Output (`result`):**
 
@@ -170,11 +170,11 @@ Get distinct values for a field across the collection.
 
 ### insert-many
 
-| Input | Required | Description |
-| ------------ | -------- | ---------------------------------------- |
-| `collection` | yes | Collection |
-| `documents` | yes | JSON array of documents |
-| `ordered` | no | Execute in order (default: `true`) |
+| Input        | Required | Description                        |
+| ------------ | -------- | ---------------------------------- |
+| `collection` | yes      | Collection                         |
+| `documents`  | yes      | JSON array of documents            |
+| `ordered`    | no       | Execute in order (default: `true`) |
 
 **Output (`result`):**
 
@@ -190,12 +190,12 @@ Get distinct values for a field across the collection.
 
 Update the first document matching a filter.
 
-| Input | Required | Description |
-| ------------ | -------- | ---------------------------------------------------- |
-| `collection` | yes | Collection |
-| `filter` | yes | Query filter |
-| `update` | yes | Update operations (e.g. `{"$set": {"status": "done"}}`) |
-| `upsert` | no | Insert if no match (default: `false`) |
+| Input        | Required | Description                                             |
+| ------------ | -------- | ------------------------------------------------------- |
+| `collection` | yes      | Collection                                              |
+| `filter`     | yes      | Query filter                                            |
+| `update`     | yes      | Update operations (e.g. `{"$set": {"status": "done"}}`) |
+| `upsert`     | no       | Insert if no match (default: `false`)                   |
 
 **Output (`result`):**
 
@@ -216,21 +216,21 @@ Update all documents matching a filter. Same inputs as `update-one`.
 
 Replace a document entirely (not a partial update).
 
-| Input | Required | Description |
-| ------------ | -------- | ----------------------------------- |
-| `collection` | yes | Collection |
-| `filter` | yes | Query filter |
-| `document` | yes | Replacement document (full document) |
-| `upsert` | no | Insert if no match |
+| Input        | Required | Description                          |
+| ------------ | -------- | ------------------------------------ |
+| `collection` | yes      | Collection                           |
+| `filter`     | yes      | Query filter                         |
+| `document`   | yes      | Replacement document (full document) |
+| `upsert`     | no       | Insert if no match                   |
 
 ### delete-one
 
 Delete the first document matching a filter.
 
-| Input | Required | Description |
-| ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
-| `filter` | yes | Query filter |
+| Input        | Required | Description  |
+| ------------ | -------- | ------------ |
+| `collection` | yes      | Collection   |
+| `filter`     | yes      | Query filter |
 
 **Output (`result`):** `{"acknowledged": true, "deletedCount": 1}`
 
@@ -238,10 +238,10 @@ Delete the first document matching a filter.
 
 Delete all documents matching a filter.
 
-| Input | Required | Description |
-| ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
-| `filter` | yes | Query filter |
+| Input        | Required | Description  |
+| ------------ | -------- | ------------ |
+| `collection` | yes      | Collection   |
+| `filter`     | yes      | Query filter |
 
 **Output (`result`):** `{"acknowledged": true, "deletedCount": 15}`
 
@@ -252,15 +252,15 @@ Delete all documents matching a filter.
 Atomically find and update a document, returning the document before or
 after modification.
 
-| Input | Required | Description |
-| ----------------- | -------- | -------------------------------------------- |
-| `collection` | yes | Collection |
-| `filter` | yes | Query filter |
-| `update` | yes | Update operations |
-| `projection` | no | Fields to return |
-| `sort` | no | Sort (determines which doc if multiple match) |
-| `upsert` | no | Insert if no match |
-| `return-document` | no | `before` or `after` (default: `after`) |
+| Input             | Required | Description                                   |
+| ----------------- | -------- | --------------------------------------------- |
+| `collection`      | yes      | Collection                                    |
+| `filter`          | yes      | Query filter                                  |
+| `update`          | yes      | Update operations                             |
+| `projection`      | no       | Fields to return                              |
+| `sort`            | no       | Sort (determines which doc if multiple match) |
+| `upsert`          | no       | Insert if no match                            |
+| `return-document` | no       | `before` or `after` (default: `after`)        |
 
 ### find-one-and-replace
 
@@ -271,12 +271,12 @@ Same inputs as `find-one-and-update` but uses `document` instead of
 
 Atomically find and delete, returning the deleted document.
 
-| Input | Required | Description |
-| ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
-| `filter` | yes | Query filter |
-| `projection` | no | Fields to return |
-| `sort` | no | Sort |
+| Input        | Required | Description      |
+| ------------ | -------- | ---------------- |
+| `collection` | yes      | Collection       |
+| `filter`     | yes      | Query filter     |
+| `projection` | no       | Fields to return |
+| `sort`       | no       | Sort             |
 
 ## Bulk and transaction commands
 
@@ -284,19 +284,24 @@ Atomically find and delete, returning the deleted document.
 
 Execute mixed insert/update/delete operations on a single collection.
 
-| Input | Required | Description |
+| Input        | Required | Description                        |
 | ------------ | -------- | ---------------------------------- |
-| `collection` | yes | Collection |
-| `operations` | yes | JSON array of operations |
-| `ordered` | no | Execute in order (default: `true`) |
+| `collection` | yes      | Collection                         |
+| `operations` | yes      | JSON array of operations           |
+| `ordered`    | no       | Execute in order (default: `true`) |
 
 Operations format:
 
 ```json
 [
-  {"insertOne": {"document": {"name": "Alice"}}},
-  {"updateOne": {"filter": {"name": "Bob"}, "update": {"$set": {"active": true}}}},
-  {"deleteOne": {"filter": {"name": "Charlie"}}}
+  { "insertOne": { "document": { "name": "Alice" } } },
+  {
+    "updateOne": {
+      "filter": { "name": "Bob" },
+      "update": { "$set": { "active": true } }
+    }
+  },
+  { "deleteOne": { "filter": { "name": "Charlie" } } }
 ]
 ```
 
@@ -317,9 +322,9 @@ Operations format:
 Execute an ACID transaction across multiple collections. Requires a
 replica set or Atlas deployment.
 
-| Input | Required | Description |
-| ------------ | -------- | -------------------------------- |
-| `operations` | yes | JSON array of operations with collection specified |
+| Input        | Required | Description                                        |
+| ------------ | -------- | -------------------------------------------------- |
+| `operations` | yes      | JSON array of operations with collection specified |
 
 ## Aggregation commands
 
@@ -327,17 +332,17 @@ replica set or Atlas deployment.
 
 Run an aggregation pipeline.
 
-| Input | Required | Description |
-| ------------ | -------- | -------------------------------- |
-| `collection` | yes | Collection |
-| `pipeline` | yes | JSON array of pipeline stages |
+| Input        | Required | Description                   |
+| ------------ | -------- | ----------------------------- |
+| `collection` | yes      | Collection                    |
+| `pipeline`   | yes      | JSON array of pipeline stages |
 
 **Output (`result`):**
 
 ```json
 [
-  {"_id": "payment", "total": 50000, "count": 42},
-  {"_id": "refund", "total": 2000, "count": 5}
+  { "_id": "payment", "total": 50000, "count": 42 },
+  { "_id": "refund", "total": 2000, "count": 5 }
 ]
 ```
 
@@ -345,39 +350,39 @@ Run an aggregation pipeline.
 
 ### create-index
 
-| Input | Required | Description |
-| --------------- | -------- | ------------------------------------------ |
-| `collection` | yes | Collection |
-| `index` | yes | Index spec (e.g. `{"email": 1}`) |
-| `index-options` | no | Options (e.g. `{"unique": true}`) |
+| Input           | Required | Description                       |
+| --------------- | -------- | --------------------------------- |
+| `collection`    | yes      | Collection                        |
+| `index`         | yes      | Index spec (e.g. `{"email": 1}`)  |
+| `index-options` | no       | Options (e.g. `{"unique": true}`) |
 
 ### create-indexes
 
-| Input | Required | Description |
-| ------------ | -------- | --------------------------------- |
-| `collection` | yes | Collection |
-| `operations` | yes | JSON array of index specifications |
+| Input        | Required | Description                        |
+| ------------ | -------- | ---------------------------------- |
+| `collection` | yes      | Collection                         |
+| `operations` | yes      | JSON array of index specifications |
 
 ### drop-index
 
-| Input | Required | Description |
+| Input        | Required | Description |
 | ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
-| `index-name` | yes | Index name |
+| `collection` | yes      | Collection  |
+| `index-name` | yes      | Index name  |
 
 ### drop-indexes
 
 Drop all non-`_id` indexes.
 
-| Input | Required | Description |
+| Input        | Required | Description |
 | ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
+| `collection` | yes      | Collection  |
 
 ### list-indexes
 
-| Input | Required | Description |
+| Input        | Required | Description |
 | ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
+| `collection` | yes      | Collection  |
 
 ## Collection and database management commands
 
@@ -387,29 +392,29 @@ List all collections in the database. No additional inputs.
 
 ### create-collection
 
-| Input | Required | Description |
-| ------------ | -------- | ---------------------------------------------------------------- |
-| `collection` | yes | Collection name |
-| `options` | no | JSON options (capped, timeseries, validator, etc.) |
+| Input        | Required | Description                                        |
+| ------------ | -------- | -------------------------------------------------- |
+| `collection` | yes      | Collection name                                    |
+| `options`    | no       | JSON options (capped, timeseries, validator, etc.) |
 
 ### drop-collection
 
-| Input | Required | Description |
+| Input        | Required | Description |
 | ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
+| `collection` | yes      | Collection  |
 
 ### rename-collection
 
-| Input | Required | Description |
+| Input        | Required | Description         |
 | ------------ | -------- | ------------------- |
-| `collection` | yes | Current name |
-| `new-name` | yes | New collection name |
+| `collection` | yes      | Current name        |
+| `new-name`   | yes      | New collection name |
 
 ### collection-stats
 
-| Input | Required | Description |
+| Input        | Required | Description |
 | ------------ | -------- | ----------- |
-| `collection` | yes | Collection |
+| `collection` | yes      | Collection  |
 
 ### db-stats
 
@@ -423,9 +428,9 @@ Drop the entire database. No additional inputs. Use with caution.
 
 Execute an arbitrary database command.
 
-| Input | Required | Description |
-| ------------ | -------- | ---------------------------------- |
-| `db-command` | yes | Command as JSON |
+| Input        | Required | Description     |
+| ------------ | -------- | --------------- |
+| `db-command` | yes      | Command as JSON |
 
 ## Authentication
 
@@ -514,7 +519,7 @@ Use `find-one-and-update` to implement an atomic counter.
     collection: counters
     filter: '{"_id": "invoice_number"}'
     update: '{"$inc": {"seq": 1}}'
-    upsert: 'true'
+    upsert: "true"
     return-document: after
 
 - name: Use counter value

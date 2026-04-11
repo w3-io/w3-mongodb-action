@@ -64764,36 +64764,26 @@ var lib_core = __nccwpck_require__(7484);
 ;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/input.js
 
 /**
- * Parse a JSON input. Returns the parsed value or undefined if empty.
- * Throws with a clear message if the input contains invalid JSON.
+ * Read an input and parse it as JSON. Returns the parsed value.
+ * Throws if the input is missing (when required) or not valid JSON.
  */
-function parseJsonInput(name) {
-    const raw = core.getInput(name);
-    if (!raw.trim())
+function parseJsonInput(name, options) {
+    const raw = core.getInput(name, options);
+    if (!raw)
         return undefined;
-    try {
-        return JSON.parse(raw);
-    }
-    catch {
-        throw new Error(`Input '${name}' is not valid JSON: ${raw.slice(0, 100)}`);
-    }
+    return JSON.parse(raw);
 }
 /**
- * Get a required input. Throws if missing or empty.
+ * Read a required input. Throws if missing.
  */
 function requireInput(name) {
-    const value = core.getInput(name);
-    if (!value.trim()) {
-        throw new Error(`Required input '${name}' is missing`);
-    }
-    return value;
+    return core.getInput(name, { required: true });
 }
 /**
- * Get an optional input with a default value.
+ * Read an optional input. Returns undefined if empty.
  */
-function getOptionalInput(name, defaultValue = "") {
-    const value = core.getInput(name);
-    return value.trim() || defaultValue;
+function getOptionalInput(name) {
+    return core.getInput(name) || undefined;
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/output.js
@@ -64813,7 +64803,9 @@ function setJsonOutput(name, value) {
  */
 function setOutputs(outputs) {
     for (const [key, value] of Object.entries(outputs)) {
-        setJsonOutput(key, value);
+        if (value != null) {
+            setJsonOutput(key, value);
+        }
     }
 }
 
@@ -64858,82 +64850,35 @@ function handleError(error) {
 ;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/http.js
 
 /**
- * Make an HTTP request with timeout, retry, and structured errors.
+ * Make an HTTP request with JSON body. Returns parsed JSON response.
  *
- * - Retries on 429 and 5xx with exponential backoff
- * - Parses JSON response automatically
- * - Throws W3ActionError with status code on failure
+ * For partner API clients that don't need the bridge.
  */
 async function request(url, options = {}) {
-    const { method = "GET", headers = {}, body, timeout = 30000, retries = 2, retryDelay = 1000, } = options;
-    const init = {
-        method,
-        headers: {
-            "Content-Type": "application/json",
-            ...headers,
-        },
-        signal: AbortSignal.timeout(timeout),
-    };
-    if (body !== undefined) {
-        init.body = typeof body === "string" ? body : JSON.stringify(body);
-    }
-    let lastError;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-            const res = await fetch(url, init);
-            const raw = await res.text();
-            let parsed;
-            try {
-                parsed = JSON.parse(raw);
-            }
-            catch {
-                parsed = raw;
-            }
-            const responseHeaders = {};
-            res.headers.forEach((v, k) => {
-                responseHeaders[k] = v;
+    const { method = "GET", headers = {}, body, timeout = 30000 } = options;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, {
+            method,
+            headers: {
+                "Content-Type": "application/json",
+                ...headers,
+            },
+            body: body ? JSON.stringify(body) : undefined,
+            signal: controller.signal,
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => "");
+            throw new W3ActionError("HTTP_ERROR", `${response.status}: ${text}`, {
+                statusCode: response.status,
             });
-            if (!res.ok) {
-                // Retry on 429 (rate limit) and 5xx (server error)
-                if ((res.status === 429 || res.status >= 500) &&
-                    attempt < retries) {
-                    await sleep(retryDelay * 2 ** attempt);
-                    continue;
-                }
-                throw new W3ActionError("HTTP_ERROR", `${method} ${url}: ${res.status}`, {
-                    statusCode: res.status,
-                    details: parsed,
-                });
-            }
-            return { status: res.status, headers: responseHeaders, body: parsed, raw };
         }
-        catch (error) {
-            if (error instanceof W3ActionError)
-                throw error;
-            lastError = error instanceof Error ? error : new Error(String(error));
-            if (attempt < retries) {
-                await sleep(retryDelay * 2 ** attempt);
-                continue;
-            }
-        }
+        return (await response.json());
     }
-    throw new W3ActionError("REQUEST_FAILED", `${method} ${url}: ${lastError?.message ?? "unknown error"}`);
-}
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-/**
- * Convenience: add API key auth header.
- */
-function apiKeyAuth(key, headerName = "Authorization", prefix = "Bearer") {
-    return { [headerName]: `${prefix} ${key}` };
-}
-/**
- * Convenience: add basic auth header.
- */
-function basicAuth(username, password) {
-    const encoded = Buffer.from(`${username}:${password}`).toString("base64");
-    return { Authorization: `Basic ${encoded}` };
+    finally {
+        clearTimeout(timer);
+    }
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/command.js
@@ -64977,8 +64922,17 @@ function createCommandRouter(commands) {
  *   - $W3_BRIDGE_URL    → TCP URL (macOS Docker Desktop fallback)
  *
  * Usage:
- *   import { bridge } from "@w3-io/action-core";
+ *   import { bridge, ethereum } from "@w3-io/action-core";
  *
+ *   // Typed helpers (recommended — autocomplete + type checking):
+ *   const receipt = await ethereum.callContract({
+ *     contract: "0x...",
+ *     method: "deposit(uint256)",
+ *     args: ["1000000"],
+ *     gasMultiplier: "1.5",
+ *   });
+ *
+ *   // Generic (full control):
  *   const balance = await bridge.chain("ethereum", "get-balance", {
  *     address: "0x...",
  *   });
@@ -64989,29 +64943,17 @@ function createCommandRouter(commands) {
 // ---------------------------------------------------------------------------
 // Transport
 // ---------------------------------------------------------------------------
-/**
- * Resolve the bridge endpoint from environment variables.
- *
- * Returns a fetch-compatible URL and optional Unix socket path.
- */
 function resolveEndpoint() {
     const bridgeUrl = process.env.W3_BRIDGE_URL;
     if (bridgeUrl) {
         return { url: bridgeUrl };
     }
     const socketPath = process.env.W3_BRIDGE_SOCKET ?? "/var/run/w3/bridge.sock";
-    // Node's fetch doesn't support Unix sockets natively.
-    // We use http.request for Unix socket transport.
     return { url: "http://localhost", socketPath };
 }
-/**
- * Make an HTTP request to the bridge. Handles both TCP and Unix socket
- * transports transparently.
- */
 async function bridgeRequest(path, body) {
     const { url, socketPath } = resolveEndpoint();
     if (socketPath) {
-        // Unix socket transport via Node's http module
         const http = await Promise.resolve(/* import() */).then(__nccwpck_require__.t.bind(__nccwpck_require__, 7067, 19));
         return new Promise((resolve, reject) => {
             const payload = body ? JSON.stringify(body) : undefined;
@@ -65021,7 +64963,9 @@ async function bridgeRequest(path, body) {
                 method: body ? "POST" : "GET",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+                    ...(payload
+                        ? { "Content-Length": Buffer.byteLength(payload) }
+                        : {}),
                 },
             }, (res) => {
                 let data = "";
@@ -65033,15 +64977,12 @@ async function bridgeRequest(path, body) {
                             reject(new error_W3ActionError(err.code ?? "BRIDGE_ERROR", err.error ?? `Bridge returned ${res.statusCode}`, { statusCode: res.statusCode, details: err }));
                         }
                         catch {
-                            reject(new error_W3ActionError("BRIDGE_ERROR", data || `HTTP ${res.statusCode}`, {
-                                statusCode: res.statusCode,
-                            }));
+                            reject(new error_W3ActionError("BRIDGE_ERROR", data || `HTTP ${res.statusCode}`, { statusCode: res.statusCode }));
                         }
                         return;
                     }
                     try {
-                        const parsed = JSON.parse(data);
-                        resolve(parsed);
+                        resolve(JSON.parse(data));
                     }
                     catch {
                         resolve(data);
@@ -65080,9 +65021,19 @@ async function bridgeRequest(path, body) {
         return text;
     }
 }
-/**
- * Check if the bridge is available.
- */
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function chainRequest(chainName, action, params, network) {
+    return bridgeRequest(`/${chainName}/${action}`, {
+        network: network ?? chainName,
+        params,
+    });
+}
+// ---------------------------------------------------------------------------
+// Public API — generic
+// ---------------------------------------------------------------------------
 async function health() {
     try {
         const res = (await bridgeRequest("/health"));
@@ -65093,42 +65044,83 @@ async function health() {
     }
 }
 /**
- * Call a chain operation via the bridge.
+ * Execute a chain operation.
  *
- * @param chain - "ethereum", "bitcoin", or "solana"
- * @param action - Operation name (e.g. "get-balance", "transfer", "call-contract")
- * @param params - Action-specific parameters
- * @param network - Network identifier (e.g. "ethereum-sepolia", "avalanche-fuji")
+ * For type-safe calls, use the typed helpers (`ethereum`, `solana`,
+ * `bitcoin`) instead. This generic method accepts any params.
  */
 async function chain(chainName, action, params, network) {
-    return (await bridgeRequest(`/${chainName}/${action}`, {
-        network: network ?? chainName,
-        params,
-    }));
+    return chainRequest(chainName, action, params, network);
 }
-/**
- * Call a crypto operation via the bridge.
- *
- * @param action - Operation name (e.g. "keccak-256", "aes-encrypt", "jwt-create")
- * @param params - Operation-specific parameters
- */
 async function bridge_crypto(action, params) {
     return (await bridgeRequest(`/crypto/${action}`, {
         params,
     }));
 }
+// ---------------------------------------------------------------------------
+// Public API — typed chain helpers
+// ---------------------------------------------------------------------------
+/** Typed Ethereum operations. */
+const ethereum = {
+    getBalance: (params, network) => chainRequest("ethereum", "get-balance", params, network),
+    readContract: (params, network) => chainRequest("ethereum", "read-contract", params, network),
+    callContract: (params, network) => chainRequest("ethereum", "call-contract", params, network),
+    transfer: (params, network) => chainRequest("ethereum", "transfer", params, network),
+    sendTransaction: (params, network) => chainRequest("ethereum", "send-transaction", params, network),
+    deployContract: (params, network) => chainRequest("ethereum", "deploy-contract", params, network),
+    transferToken: (params, network) => chainRequest("ethereum", "transfer-token", params, network),
+    approveToken: (params, network) => chainRequest("ethereum", "approve-token", params, network),
+    transferNft: (params, network) => chainRequest("ethereum", "transfer-nft", params, network),
+    getTransaction: (params, network) => chainRequest("ethereum", "get-transaction", params, network),
+    waitForTransaction: (params, network) => chainRequest("ethereum", "wait-for-transaction", params, network),
+    getEvents: (params, network) => chainRequest("ethereum", "get-events", params, network),
+    resolveName: (params, network) => chainRequest("ethereum", "resolve-name", params, network),
+    getTokenBalance: (params, network) => chainRequest("ethereum", "get-token-balance", params, network),
+    getTokenAllowance: (params, network) => chainRequest("ethereum", "get-token-allowance", params, network),
+    getNftOwner: (params, network) => chainRequest("ethereum", "get-nft-owner", params, network),
+    getNftMetadata: (params, network) => chainRequest("ethereum", "get-nft-metadata", params, network),
+};
+/** Typed Solana operations. */
+const solana = {
+    getBalance: (params, network) => chainRequest("solana", "get-balance", params, network),
+    transfer: (params, network) => chainRequest("solana", "transfer", params, network),
+    transferToken: (params, network) => chainRequest("solana", "transfer-token", params, network),
+    callProgram: (params, network) => chainRequest("solana", "call-program", params, network),
+    getAccount: (params, network) => chainRequest("solana", "get-account", params, network),
+    getTokenBalance: (params, network) => chainRequest("solana", "get-token-balance", params, network),
+    getTokenAccounts: (params, network) => chainRequest("solana", "get-token-accounts", params, network),
+    getTransaction: (params, network) => chainRequest("solana", "get-transaction", params, network),
+    waitForTransaction: (params, network) => chainRequest("solana", "wait-for-transaction", params, network),
+    /** Generate an ephemeral keypair for use as an additional signer. */
+    generateKeypair: () => bridgeRequest("/solana/generate-keypair", {}),
+    /** Get the payer's public key (no secret exposed). */
+    payerAddress: () => bridgeRequest("/solana/payer-address"),
+};
+/** Typed Bitcoin operations. */
+const bitcoin = {
+    getBalance: (params, network) => chainRequest("bitcoin", "get-balance", params, network),
+    send: (params, network) => chainRequest("bitcoin", "send", params, network),
+    getUtxos: (params, network) => chainRequest("bitcoin", "get-utxos", params, network),
+    getTransaction: (params, network) => chainRequest("bitcoin", "get-transaction", params, network),
+    getFeeRate: (params, network) => chainRequest("bitcoin", "get-fee-rate", params ?? {}, network),
+    waitForTransaction: (params, network) => chainRequest("bitcoin", "wait-for-transaction", params, network),
+};
+// ---------------------------------------------------------------------------
+// Default export
+// ---------------------------------------------------------------------------
 /**
- * The bridge client. Import and use:
+ * The bridge client.
  *
- *   import { bridge } from "@w3-io/action-core";
+ *   import { bridge, ethereum, solana, bitcoin } from "@w3-io/action-core";
  *
- *   // Chain operations
+ *   // Typed (recommended):
+ *   const receipt = await ethereum.callContract({ contract, method, args });
+ *   const sig = await solana.callProgram({ programId, accounts, data });
+ *   const tx = await bitcoin.send({ to, amount });
+ *
+ *   // Generic:
  *   const bal = await bridge.chain("ethereum", "get-balance", { address });
- *
- *   // Crypto
  *   const hash = await bridge.crypto("keccak-256", { data: "0x..." });
- *
- *   // Health check
  *   const ok = await bridge.health();
  */
 const bridge = {
@@ -65137,48 +65129,69 @@ const bridge = {
     crypto: bridge_crypto,
 };
 
+;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/summary.js
+
+/**
+ * Write a job summary safely.
+ *
+ * Wraps `@actions/core` summary with proper `await` and error handling.
+ * The W3 runner sets GITHUB_STEP_SUMMARY and mounts a writable file,
+ * so this works on both GitHub Actions and W3. If the summary file is
+ * unavailable (local dev, CI without summary support), the write is
+ * silently skipped.
+ *
+ * Usage:
+ *   await writeSummary("My Action: deposit", [
+ *     ["Amount", "1000 USDC"],
+ *     ["TX", "`0xabc...`"],
+ *   ]);
+ *
+ *   await writeSummary("My Action: query", result);
+ */
+async function writeSummary(heading, content) {
+    try {
+        core.summary.addHeading(heading, 3);
+        if (typeof content === "string") {
+            core.summary.addRaw(content);
+        }
+        else if (Array.isArray(content)) {
+            // Key-value pairs rendered as markdown
+            for (const [key, value] of content) {
+                core.summary.addRaw(`**${key}:** ${value}\n\n`);
+            }
+        }
+        else {
+            core.summary.addCodeBlock(JSON.stringify(content, null, 2), "json");
+        }
+        await core.summary.write();
+    }
+    catch {
+        // Silently skip — environment may not support job summaries
+    }
+}
+
 ;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/test.js
 /**
  * Test utilities for W3 actions.
  *
  * Mocks @actions/core so you can test command handlers in isolation
  * without running the full GitHub Actions runtime.
- *
- * Usage:
- *   import { mockAction, expectOutput, expectFailed } from "@w3-io/action-core/test";
- *
- *   test("keccak-256 hashes correctly", async () => {
- *     mockAction({ command: "keccak-256", input: "48656c6c6f" });
- *     await import("../src/index.js");
- *     expectOutput("result", (val) => val.includes("hash"));
- *   });
  */
 let _inputs = {};
 let _outputs = new Map();
 let _failed = null;
-/**
- * Set up mock inputs for the next action invocation.
- * Call this before importing/running the action.
- */
 function mockAction(inputs) {
     _inputs = inputs;
     _outputs = new Map();
     _failed = null;
-    // Mock process.env for @actions/core.getInput()
     for (const [key, value] of Object.entries(inputs)) {
         const envKey = `INPUT_${key.replace(/-/g, "_").toUpperCase()}`;
         process.env[envKey] = value;
     }
 }
-/**
- * Get an output that was set during action execution.
- */
 function getOutput(name) {
     return _outputs.get(name);
 }
-/**
- * Assert an output was set and optionally validate its value.
- */
 function expectOutput(name, validator) {
     const value = _outputs.get(name);
     if (value === undefined) {
@@ -65188,9 +65201,6 @@ function expectOutput(name, validator) {
         throw new Error(`Output "${name}" failed validation. Value: ${value}`);
     }
 }
-/**
- * Assert the action failed with a specific message pattern.
- */
 function expectFailed(pattern) {
     if (_failed === null) {
         throw new Error("Expected action to fail, but it succeeded");
@@ -65204,17 +65214,11 @@ function expectFailed(pattern) {
         }
     }
 }
-/**
- * Assert the action succeeded (did not call setFailed).
- */
 function expectSuccess() {
     if (_failed !== null) {
         throw new Error(`Expected action to succeed, but it failed: "${_failed}"`);
     }
 }
-/**
- * Clean up mock environment after tests.
- */
 function cleanupMock() {
     for (const key of Object.keys(process.env)) {
         if (key.startsWith("INPUT_")) {
@@ -65225,14 +65229,8 @@ function cleanupMock() {
     _outputs = new Map();
     _failed = null;
 }
-/**
- * Create a mock @actions/core module that captures outputs and failures.
- *
- * Use this to intercept setOutput/setFailed calls:
- *   const core = createMockCore();
- *   // pass core to your command handler
- */
 function createMockCore() {
+    const noopChain = () => ({ addRaw: noopChain, addHeading: noopChain, addCodeBlock: noopChain, write: async () => { } });
     return {
         getInput: (name, opts) => {
             const value = _inputs[name] ?? "";
@@ -65251,13 +65249,12 @@ function createMockCore() {
         warning: (_msg) => { },
         error: (_msg) => { },
         debug: (_msg) => { },
-        summary: {
-            addHeading: () => ({ addRaw: () => ({ write: async () => { } }) }),
-        },
+        summary: { addHeading: noopChain, addRaw: noopChain, addCodeBlock: noopChain, write: async () => { } },
     };
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@w3-io/action-core/dist/index.js
+
 
 
 
@@ -65276,53 +65273,71 @@ var lib = __nccwpck_require__(4294);
 // -- Shared helpers -----------------------------------------------------------
 
 function getInputs() {
-  const url = lib_core.getInput('url', { required: true })
-  const collectionName = lib_core.getInput('collection') || ''
-  const filterStr = lib_core.getInput('filter') || '{}'
-  const documentStr = lib_core.getInput('document') || ''
-  const documentsStr = lib_core.getInput('documents') || ''
-  const updateStr = lib_core.getInput('update') || ''
-  const pipelineStr = lib_core.getInput('pipeline') || ''
-  const projectionStr = lib_core.getInput('projection') || ''
-  const sortStr = lib_core.getInput('sort') || ''
-  const limitStr = lib_core.getInput('limit') || ''
-  const skipStr = lib_core.getInput('skip') || ''
-  const field = lib_core.getInput('field') || ''
-  const indexStr = lib_core.getInput('index') || ''
-  const indexOptionsStr = lib_core.getInput('index-options') || ''
-  const indexName = lib_core.getInput('index-name') || ''
-  const upsert = lib_core.getInput('upsert') === 'true'
-  const ordered = lib_core.getInput('ordered') !== 'false'
-  const operationsStr = lib_core.getInput('operations') || ''
-  const optionsStr = lib_core.getInput('options') || ''
-  const newCollectionName = lib_core.getInput('new-name') || ''
-  const returnDocument = lib_core.getInput('return-document') || 'after'
-  const commandStr = lib_core.getInput('db-command') || ''
+  const url = lib_core.getInput("url", { required: true });
+  const collectionName = lib_core.getInput("collection") || "";
+  const filterStr = lib_core.getInput("filter") || "{}";
+  const documentStr = lib_core.getInput("document") || "";
+  const documentsStr = lib_core.getInput("documents") || "";
+  const updateStr = lib_core.getInput("update") || "";
+  const pipelineStr = lib_core.getInput("pipeline") || "";
+  const projectionStr = lib_core.getInput("projection") || "";
+  const sortStr = lib_core.getInput("sort") || "";
+  const limitStr = lib_core.getInput("limit") || "";
+  const skipStr = lib_core.getInput("skip") || "";
+  const field = lib_core.getInput("field") || "";
+  const indexStr = lib_core.getInput("index") || "";
+  const indexOptionsStr = lib_core.getInput("index-options") || "";
+  const indexName = lib_core.getInput("index-name") || "";
+  const upsert = lib_core.getInput("upsert") === "true";
+  const ordered = lib_core.getInput("ordered") !== "false";
+  const operationsStr = lib_core.getInput("operations") || "";
+  const optionsStr = lib_core.getInput("options") || "";
+  const newCollectionName = lib_core.getInput("new-name") || "";
+  const returnDocument = lib_core.getInput("return-document") || "after";
+  const commandStr = lib_core.getInput("db-command") || "";
 
-  const filter = JSON.parse(filterStr)
-  const projection = projectionStr ? JSON.parse(projectionStr) : undefined
-  const sort = sortStr ? JSON.parse(sortStr) : undefined
-  const limit = limitStr ? parseInt(limitStr, 10) : undefined
-  const skip = skipStr ? parseInt(skipStr, 10) : undefined
+  const filter = JSON.parse(filterStr);
+  const projection = projectionStr ? JSON.parse(projectionStr) : undefined;
+  const sort = sortStr ? JSON.parse(sortStr) : undefined;
+  const limit = limitStr ? parseInt(limitStr, 10) : undefined;
+  const skip = skipStr ? parseInt(skipStr, 10) : undefined;
 
   return {
-    url, collectionName, filter, documentStr, documentsStr, updateStr,
-    pipelineStr, projection, sort, limit, skip, field, indexStr,
-    indexOptionsStr, indexName, upsert, ordered, operationsStr, optionsStr,
-    newCollectionName, returnDocument, commandStr,
-  }
+    url,
+    collectionName,
+    filter,
+    documentStr,
+    documentsStr,
+    updateStr,
+    pipelineStr,
+    projection,
+    sort,
+    limit,
+    skip,
+    field,
+    indexStr,
+    indexOptionsStr,
+    indexName,
+    upsert,
+    ordered,
+    operationsStr,
+    optionsStr,
+    newCollectionName,
+    returnDocument,
+    commandStr,
+  };
 }
 
 async function withClient(url, fn) {
   const client = new lib.MongoClient(url, {
     connectTimeoutMS: 10000,
     serverSelectionTimeoutMS: 10000,
-  })
+  });
   try {
-    await client.connect()
-    return await fn(client)
+    await client.connect();
+    return await fn(client);
   } finally {
-    await client.close().catch(() => {})
+    await client.close().catch(() => {});
   }
 }
 
@@ -65330,30 +65345,33 @@ async function withClient(url, fn) {
 
 function dbHandler(fn) {
   return async () => {
-    const inputs = getInputs()
+    const inputs = getInputs();
     const result = await withClient(inputs.url, async (client) => {
-      const db = client.db()
-      return fn(db, client, inputs)
-    })
-    setJsonOutput('result', result)
-  }
+      const db = client.db();
+      return fn(db, client, inputs);
+    });
+    setJsonOutput("result", result);
+  };
 }
 
 // -- Collection-level command handler factory ---------------------------------
 
 function collHandler(fn) {
   return async () => {
-    const inputs = getInputs()
+    const inputs = getInputs();
     const result = await withClient(inputs.url, async (client) => {
-      const db = client.db()
+      const db = client.db();
       if (!inputs.collectionName) {
-        throw new error_W3ActionError('MISSING_INPUT', 'Collection name required for this command')
+        throw new error_W3ActionError(
+          "MISSING_INPUT",
+          "Collection name required for this command",
+        );
       }
-      const collection = db.collection(inputs.collectionName)
-      return fn(collection, db, inputs)
-    })
-    setJsonOutput('result', result)
-  }
+      const collection = db.collection(inputs.collectionName);
+      return fn(collection, db, inputs);
+    });
+    setJsonOutput("result", result);
+  };
 }
 
 // -- Router -------------------------------------------------------------------
@@ -65363,233 +65381,297 @@ const router = createCommandRouter({
   // Database-level commands
   // -----------------------------------------------------------------
 
-  'list-collections': dbHandler(async (db) => {
-    const collections = await db.listCollections().toArray()
+  "list-collections": dbHandler(async (db) => {
+    const collections = await db.listCollections().toArray();
     return collections.map((c) => ({
       name: c.name,
       type: c.type,
       options: c.options,
-    }))
+    }));
   }),
 
-  'create-collection': dbHandler(async (db, _client, inputs) => {
+  "create-collection": dbHandler(async (db, _client, inputs) => {
     if (!inputs.collectionName)
-      throw new error_W3ActionError('MISSING_INPUT', 'collection is required for create-collection')
-    const options = inputs.optionsStr ? JSON.parse(inputs.optionsStr) : {}
-    await db.createCollection(inputs.collectionName, options)
-    return { created: inputs.collectionName }
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "collection is required for create-collection",
+      );
+    const options = inputs.optionsStr ? JSON.parse(inputs.optionsStr) : {};
+    await db.createCollection(inputs.collectionName, options);
+    return { created: inputs.collectionName };
   }),
 
-  'drop-collection': dbHandler(async (db, _client, inputs) => {
+  "drop-collection": dbHandler(async (db, _client, inputs) => {
     if (!inputs.collectionName)
-      throw new error_W3ActionError('MISSING_INPUT', 'collection is required for drop-collection')
-    const dropped = await db.collection(inputs.collectionName).drop().catch((e) => {
-      if (e.codeName === 'NamespaceNotFound') return false
-      throw e
-    })
-    return { dropped }
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "collection is required for drop-collection",
+      );
+    const dropped = await db
+      .collection(inputs.collectionName)
+      .drop()
+      .catch((e) => {
+        if (e.codeName === "NamespaceNotFound") return false;
+        throw e;
+      });
+    return { dropped };
   }),
 
-  'rename-collection': dbHandler(async (db, _client, inputs) => {
+  "rename-collection": dbHandler(async (db, _client, inputs) => {
     if (!inputs.collectionName)
-      throw new error_W3ActionError('MISSING_INPUT', 'collection is required for rename-collection')
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "collection is required for rename-collection",
+      );
     if (!inputs.newCollectionName)
-      throw new error_W3ActionError('MISSING_INPUT', 'new-name is required for rename-collection')
-    await db.collection(inputs.collectionName).rename(inputs.newCollectionName)
-    return { from: inputs.collectionName, to: inputs.newCollectionName }
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "new-name is required for rename-collection",
+      );
+    await db.collection(inputs.collectionName).rename(inputs.newCollectionName);
+    return { from: inputs.collectionName, to: inputs.newCollectionName };
   }),
 
-  'db-stats': dbHandler(async (db) => {
-    return db.stats()
+  "db-stats": dbHandler(async (db) => {
+    return db.stats();
   }),
 
-  'run-command': dbHandler(async (db, _client, inputs) => {
-    if (!inputs.commandStr) throw new error_W3ActionError('MISSING_INPUT', 'db-command is required for run-command')
-    const dbCommand = JSON.parse(inputs.commandStr)
-    return db.command(dbCommand)
+  "run-command": dbHandler(async (db, _client, inputs) => {
+    if (!inputs.commandStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "db-command is required for run-command",
+      );
+    const dbCommand = JSON.parse(inputs.commandStr);
+    return db.command(dbCommand);
   }),
 
-  'drop-database': dbHandler(async (db) => {
-    const dropResult = await db.dropDatabase()
-    return { dropped: dropResult }
+  "drop-database": dbHandler(async (db) => {
+    const dropResult = await db.dropDatabase();
+    return { dropped: dropResult };
   }),
 
   transaction: dbHandler(async (db, client, inputs) => {
     if (!inputs.operationsStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'operations is required for transaction')
-    const txOps = JSON.parse(inputs.operationsStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "operations is required for transaction",
+      );
+    const txOps = JSON.parse(inputs.operationsStr);
     if (!Array.isArray(txOps))
-      throw new error_W3ActionError('MISSING_INPUT', 'operations must be a JSON array')
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "operations must be a JSON array",
+      );
 
-    const session = client.startSession()
-    const txResults = []
+    const session = client.startSession();
+    const txResults = [];
     try {
       await session.withTransaction(async () => {
         for (const op of txOps) {
           if (!op.collection)
-            throw new error_W3ActionError('MISSING_INPUT', 'Each transaction operation must specify a collection')
-          if (!op.op) throw new error_W3ActionError('MISSING_INPUT', 'Each transaction operation must specify an op')
-          const coll = db.collection(op.collection)
+            throw new error_W3ActionError(
+              "MISSING_INPUT",
+              "Each transaction operation must specify a collection",
+            );
+          if (!op.op)
+            throw new error_W3ActionError(
+              "MISSING_INPUT",
+              "Each transaction operation must specify an op",
+            );
+          const coll = db.collection(op.collection);
 
           switch (op.op) {
-            case 'insertOne': {
-              if (!op.document) throw new error_W3ActionError('MISSING_INPUT', 'insertOne requires document')
-              const r = await coll.insertOne(op.document, { session })
+            case "insertOne": {
+              if (!op.document)
+                throw new error_W3ActionError(
+                  "MISSING_INPUT",
+                  "insertOne requires document",
+                );
+              const r = await coll.insertOne(op.document, { session });
               txResults.push({
-                op: 'insertOne',
+                op: "insertOne",
                 collection: op.collection,
                 insertedId: r.insertedId.toString(),
-              })
-              break
+              });
+              break;
             }
 
-            case 'insertMany': {
+            case "insertMany": {
               if (!op.documents || !Array.isArray(op.documents))
-                throw new error_W3ActionError('MISSING_INPUT', 'insertMany requires documents array')
+                throw new error_W3ActionError(
+                  "MISSING_INPUT",
+                  "insertMany requires documents array",
+                );
               const r = await coll.insertMany(op.documents, {
                 session,
                 ordered: op.ordered !== false,
-              })
+              });
               txResults.push({
-                op: 'insertMany',
+                op: "insertMany",
                 collection: op.collection,
                 insertedCount: r.insertedCount,
-              })
-              break
+              });
+              break;
             }
 
-            case 'updateOne': {
+            case "updateOne": {
               if (!op.filter || !op.update)
-                throw new error_W3ActionError('MISSING_INPUT', 'updateOne requires filter and update')
+                throw new error_W3ActionError(
+                  "MISSING_INPUT",
+                  "updateOne requires filter and update",
+                );
               const r = await coll.updateOne(op.filter, op.update, {
                 session,
                 upsert: op.upsert === true,
-              })
+              });
               txResults.push({
-                op: 'updateOne',
+                op: "updateOne",
                 collection: op.collection,
                 matchedCount: r.matchedCount,
                 modifiedCount: r.modifiedCount,
                 upsertedId: r.upsertedId?.toString() || null,
-              })
-              break
+              });
+              break;
             }
 
-            case 'updateMany': {
+            case "updateMany": {
               if (!op.filter || !op.update)
-                throw new error_W3ActionError('MISSING_INPUT', 'updateMany requires filter and update')
+                throw new error_W3ActionError(
+                  "MISSING_INPUT",
+                  "updateMany requires filter and update",
+                );
               const r = await coll.updateMany(op.filter, op.update, {
                 session,
                 upsert: op.upsert === true,
-              })
+              });
               txResults.push({
-                op: 'updateMany',
+                op: "updateMany",
                 collection: op.collection,
                 matchedCount: r.matchedCount,
                 modifiedCount: r.modifiedCount,
                 upsertedId: r.upsertedId?.toString() || null,
-              })
-              break
+              });
+              break;
             }
 
-            case 'replaceOne': {
+            case "replaceOne": {
               if (!op.filter || !op.document)
-                throw new error_W3ActionError('MISSING_INPUT', 'replaceOne requires filter and document')
+                throw new error_W3ActionError(
+                  "MISSING_INPUT",
+                  "replaceOne requires filter and document",
+                );
               const r = await coll.replaceOne(op.filter, op.document, {
                 session,
                 upsert: op.upsert === true,
-              })
+              });
               txResults.push({
-                op: 'replaceOne',
+                op: "replaceOne",
                 collection: op.collection,
                 matchedCount: r.matchedCount,
                 modifiedCount: r.modifiedCount,
                 upsertedId: r.upsertedId?.toString() || null,
-              })
-              break
+              });
+              break;
             }
 
-            case 'deleteOne': {
-              if (!op.filter) throw new error_W3ActionError('MISSING_INPUT', 'deleteOne requires filter')
-              const r = await coll.deleteOne(op.filter, { session })
+            case "deleteOne": {
+              if (!op.filter)
+                throw new error_W3ActionError(
+                  "MISSING_INPUT",
+                  "deleteOne requires filter",
+                );
+              const r = await coll.deleteOne(op.filter, { session });
               txResults.push({
-                op: 'deleteOne',
+                op: "deleteOne",
                 collection: op.collection,
                 deletedCount: r.deletedCount,
-              })
-              break
+              });
+              break;
             }
 
-            case 'deleteMany': {
-              if (!op.filter) throw new error_W3ActionError('MISSING_INPUT', 'deleteMany requires filter')
-              const r = await coll.deleteMany(op.filter, { session })
+            case "deleteMany": {
+              if (!op.filter)
+                throw new error_W3ActionError(
+                  "MISSING_INPUT",
+                  "deleteMany requires filter",
+                );
+              const r = await coll.deleteMany(op.filter, { session });
               txResults.push({
-                op: 'deleteMany',
+                op: "deleteMany",
                 collection: op.collection,
                 deletedCount: r.deletedCount,
-              })
-              break
+              });
+              break;
             }
 
-            case 'findOne': {
-              const opts = { session }
-              if (op.projection) opts.projection = op.projection
-              const doc = await coll.findOne(op.filter || {}, opts)
+            case "findOne": {
+              const opts = { session };
+              if (op.projection) opts.projection = op.projection;
+              const doc = await coll.findOne(op.filter || {}, opts);
               txResults.push({
-                op: 'findOne',
+                op: "findOne",
                 collection: op.collection,
                 document: doc,
-              })
-              break
+              });
+              break;
             }
 
-            case 'findOneAndUpdate': {
+            case "findOneAndUpdate": {
               if (!op.filter || !op.update)
-                throw new error_W3ActionError('MISSING_INPUT', 'findOneAndUpdate requires filter and update')
+                throw new error_W3ActionError(
+                  "MISSING_INPUT",
+                  "findOneAndUpdate requires filter and update",
+                );
               const opts = {
                 session,
                 upsert: op.upsert === true,
-                returnDocument: op.returnDocument === 'before' ? 'before' : 'after',
-              }
-              if (op.projection) opts.projection = op.projection
-              if (op.sort) opts.sort = op.sort
-              const doc = await coll.findOneAndUpdate(op.filter, op.update, opts)
+                returnDocument:
+                  op.returnDocument === "before" ? "before" : "after",
+              };
+              if (op.projection) opts.projection = op.projection;
+              if (op.sort) opts.sort = op.sort;
+              const doc = await coll.findOneAndUpdate(
+                op.filter,
+                op.update,
+                opts,
+              );
               txResults.push({
-                op: 'findOneAndUpdate',
+                op: "findOneAndUpdate",
                 collection: op.collection,
                 document: doc,
-              })
-              break
+              });
+              break;
             }
 
-            case 'findOneAndDelete': {
-              const opts = { session }
-              if (op.projection) opts.projection = op.projection
-              if (op.sort) opts.sort = op.sort
-              const doc = await coll.findOneAndDelete(op.filter || {}, opts)
+            case "findOneAndDelete": {
+              const opts = { session };
+              if (op.projection) opts.projection = op.projection;
+              if (op.sort) opts.sort = op.sort;
+              const doc = await coll.findOneAndDelete(op.filter || {}, opts);
               txResults.push({
-                op: 'findOneAndDelete',
+                op: "findOneAndDelete",
                 collection: op.collection,
                 document: doc,
-              })
-              break
+              });
+              break;
             }
 
             default:
               throw new error_W3ActionError(
-                'UNKNOWN_COMMAND',
+                "UNKNOWN_COMMAND",
                 `Unknown transaction op: ${op.op}. Available: insertOne, insertMany, updateOne, updateMany, replaceOne, deleteOne, deleteMany, findOne, findOneAndUpdate, findOneAndDelete`,
-              )
+              );
           }
         }
-      })
+      });
 
-      return { committed: true, operations: txResults }
+      return { committed: true, operations: txResults };
     } catch (txError) {
-      setJsonOutput('result', { committed: false, error: txError.message })
-      throw txError
+      setJsonOutput("result", { committed: false, error: txError.message });
+      throw txError;
     } finally {
-      await session.endSession()
+      await session.endSession();
     }
   }),
 
@@ -65597,159 +65679,206 @@ const router = createCommandRouter({
   // Read operations
   // -----------------------------------------------------------------
 
-  'find-one': collHandler(async (collection, _db, inputs) => {
-    const options = {}
-    if (inputs.projection) options.projection = inputs.projection
-    return collection.findOne(inputs.filter, options)
+  "find-one": collHandler(async (collection, _db, inputs) => {
+    const options = {};
+    if (inputs.projection) options.projection = inputs.projection;
+    return collection.findOne(inputs.filter, options);
   }),
 
   find: collHandler(async (collection, _db, inputs) => {
-    let cursor = collection.find(inputs.filter)
-    if (inputs.projection) cursor = cursor.project(inputs.projection)
-    if (inputs.sort) cursor = cursor.sort(inputs.sort)
-    if (inputs.skip) cursor = cursor.skip(inputs.skip)
-    if (inputs.limit) cursor = cursor.limit(inputs.limit)
-    return cursor.toArray()
+    let cursor = collection.find(inputs.filter);
+    if (inputs.projection) cursor = cursor.project(inputs.projection);
+    if (inputs.sort) cursor = cursor.sort(inputs.sort);
+    if (inputs.skip) cursor = cursor.skip(inputs.skip);
+    if (inputs.limit) cursor = cursor.limit(inputs.limit);
+    return cursor.toArray();
   }),
 
   count: collHandler(async (collection, _db, inputs) => {
-    return collection.countDocuments(inputs.filter)
+    return collection.countDocuments(inputs.filter);
   }),
 
-  'estimated-count': collHandler(async (collection) => {
-    return collection.estimatedDocumentCount()
+  "estimated-count": collHandler(async (collection) => {
+    return collection.estimatedDocumentCount();
   }),
 
   distinct: collHandler(async (collection, _db, inputs) => {
-    if (!inputs.field) throw new error_W3ActionError('MISSING_INPUT', 'field is required for distinct')
-    return collection.distinct(inputs.field, inputs.filter)
+    if (!inputs.field)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "field is required for distinct",
+      );
+    return collection.distinct(inputs.field, inputs.filter);
   }),
 
   // -----------------------------------------------------------------
   // Write operations
   // -----------------------------------------------------------------
 
-  'insert-one': collHandler(async (collection, _db, inputs) => {
+  "insert-one": collHandler(async (collection, _db, inputs) => {
     if (!inputs.documentStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'document is required for insert-one')
-    const doc = JSON.parse(inputs.documentStr)
-    const insertResult = await collection.insertOne(doc)
-    return { insertedId: insertResult.insertedId.toString() }
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "document is required for insert-one",
+      );
+    const doc = JSON.parse(inputs.documentStr);
+    const insertResult = await collection.insertOne(doc);
+    return { insertedId: insertResult.insertedId.toString() };
   }),
 
-  'insert-many': collHandler(async (collection, _db, inputs) => {
+  "insert-many": collHandler(async (collection, _db, inputs) => {
     if (!inputs.documentsStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'documents is required for insert-many')
-    const docs = JSON.parse(inputs.documentsStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "documents is required for insert-many",
+      );
+    const docs = JSON.parse(inputs.documentsStr);
     if (!Array.isArray(docs))
-      throw new error_W3ActionError('MISSING_INPUT', 'documents must be a JSON array')
-    const insertResult = await collection.insertMany(docs, { ordered: inputs.ordered })
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "documents must be a JSON array",
+      );
+    const insertResult = await collection.insertMany(docs, {
+      ordered: inputs.ordered,
+    });
     return {
       insertedCount: insertResult.insertedCount,
       insertedIds: Object.fromEntries(
-        Object.entries(insertResult.insertedIds).map(([k, v]) => [k, v.toString()]),
+        Object.entries(insertResult.insertedIds).map(([k, v]) => [
+          k,
+          v.toString(),
+        ]),
       ),
-    }
+    };
   }),
 
-  'update-one': collHandler(async (collection, _db, inputs) => {
-    if (!inputs.updateStr) throw new error_W3ActionError('MISSING_INPUT', 'update is required for update-one')
-    const updateDoc = JSON.parse(inputs.updateStr)
+  "update-one": collHandler(async (collection, _db, inputs) => {
+    if (!inputs.updateStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "update is required for update-one",
+      );
+    const updateDoc = JSON.parse(inputs.updateStr);
     const updateResult = await collection.updateOne(inputs.filter, updateDoc, {
       upsert: inputs.upsert,
-    })
+    });
     return {
       matchedCount: updateResult.matchedCount,
       modifiedCount: updateResult.modifiedCount,
       upsertedId: updateResult.upsertedId?.toString() || null,
-    }
+    };
   }),
 
-  'update-many': collHandler(async (collection, _db, inputs) => {
-    if (!inputs.updateStr) throw new error_W3ActionError('MISSING_INPUT', 'update is required for update-many')
-    const updateDoc = JSON.parse(inputs.updateStr)
+  "update-many": collHandler(async (collection, _db, inputs) => {
+    if (!inputs.updateStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "update is required for update-many",
+      );
+    const updateDoc = JSON.parse(inputs.updateStr);
     const updateResult = await collection.updateMany(inputs.filter, updateDoc, {
       upsert: inputs.upsert,
-    })
+    });
     return {
       matchedCount: updateResult.matchedCount,
       modifiedCount: updateResult.modifiedCount,
       upsertedId: updateResult.upsertedId?.toString() || null,
-    }
+    };
   }),
 
-  'replace-one': collHandler(async (collection, _db, inputs) => {
+  "replace-one": collHandler(async (collection, _db, inputs) => {
     if (!inputs.documentStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'document is required for replace-one')
-    const replacement = JSON.parse(inputs.documentStr)
-    const replaceResult = await collection.replaceOne(inputs.filter, replacement, {
-      upsert: inputs.upsert,
-    })
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "document is required for replace-one",
+      );
+    const replacement = JSON.parse(inputs.documentStr);
+    const replaceResult = await collection.replaceOne(
+      inputs.filter,
+      replacement,
+      {
+        upsert: inputs.upsert,
+      },
+    );
     return {
       matchedCount: replaceResult.matchedCount,
       modifiedCount: replaceResult.modifiedCount,
       upsertedId: replaceResult.upsertedId?.toString() || null,
-    }
+    };
   }),
 
-  'delete-one': collHandler(async (collection, _db, inputs) => {
-    const deleteResult = await collection.deleteOne(inputs.filter)
-    return { deletedCount: deleteResult.deletedCount }
+  "delete-one": collHandler(async (collection, _db, inputs) => {
+    const deleteResult = await collection.deleteOne(inputs.filter);
+    return { deletedCount: deleteResult.deletedCount };
   }),
 
-  'delete-many': collHandler(async (collection, _db, inputs) => {
-    const deleteResult = await collection.deleteMany(inputs.filter)
-    return { deletedCount: deleteResult.deletedCount }
+  "delete-many": collHandler(async (collection, _db, inputs) => {
+    const deleteResult = await collection.deleteMany(inputs.filter);
+    return { deletedCount: deleteResult.deletedCount };
   }),
 
   // -----------------------------------------------------------------
   // Atomic find-and-modify operations
   // -----------------------------------------------------------------
 
-  'find-one-and-update': collHandler(async (collection, _db, inputs) => {
+  "find-one-and-update": collHandler(async (collection, _db, inputs) => {
     if (!inputs.updateStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'update is required for find-one-and-update')
-    const updateDoc = JSON.parse(inputs.updateStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "update is required for find-one-and-update",
+      );
+    const updateDoc = JSON.parse(inputs.updateStr);
     const options = {
       upsert: inputs.upsert,
-      returnDocument: inputs.returnDocument === 'before' ? 'before' : 'after',
-    }
-    if (inputs.projection) options.projection = inputs.projection
-    if (inputs.sort) options.sort = inputs.sort
-    return collection.findOneAndUpdate(inputs.filter, updateDoc, options)
+      returnDocument: inputs.returnDocument === "before" ? "before" : "after",
+    };
+    if (inputs.projection) options.projection = inputs.projection;
+    if (inputs.sort) options.sort = inputs.sort;
+    return collection.findOneAndUpdate(inputs.filter, updateDoc, options);
   }),
 
-  'find-one-and-replace': collHandler(async (collection, _db, inputs) => {
+  "find-one-and-replace": collHandler(async (collection, _db, inputs) => {
     if (!inputs.documentStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'document is required for find-one-and-replace')
-    const replacement = JSON.parse(inputs.documentStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "document is required for find-one-and-replace",
+      );
+    const replacement = JSON.parse(inputs.documentStr);
     const options = {
       upsert: inputs.upsert,
-      returnDocument: inputs.returnDocument === 'before' ? 'before' : 'after',
-    }
-    if (inputs.projection) options.projection = inputs.projection
-    if (inputs.sort) options.sort = inputs.sort
-    return collection.findOneAndReplace(inputs.filter, replacement, options)
+      returnDocument: inputs.returnDocument === "before" ? "before" : "after",
+    };
+    if (inputs.projection) options.projection = inputs.projection;
+    if (inputs.sort) options.sort = inputs.sort;
+    return collection.findOneAndReplace(inputs.filter, replacement, options);
   }),
 
-  'find-one-and-delete': collHandler(async (collection, _db, inputs) => {
-    const options = {}
-    if (inputs.projection) options.projection = inputs.projection
-    if (inputs.sort) options.sort = inputs.sort
-    return collection.findOneAndDelete(inputs.filter, options)
+  "find-one-and-delete": collHandler(async (collection, _db, inputs) => {
+    const options = {};
+    if (inputs.projection) options.projection = inputs.projection;
+    if (inputs.sort) options.sort = inputs.sort;
+    return collection.findOneAndDelete(inputs.filter, options);
   }),
 
   // -----------------------------------------------------------------
   // Bulk operations
   // -----------------------------------------------------------------
 
-  'bulk-write': collHandler(async (collection, _db, inputs) => {
+  "bulk-write": collHandler(async (collection, _db, inputs) => {
     if (!inputs.operationsStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'operations is required for bulk-write')
-    const ops = JSON.parse(inputs.operationsStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "operations is required for bulk-write",
+      );
+    const ops = JSON.parse(inputs.operationsStr);
     if (!Array.isArray(ops))
-      throw new error_W3ActionError('MISSING_INPUT', 'operations must be a JSON array')
-    const bulkResult = await collection.bulkWrite(ops, { ordered: inputs.ordered })
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "operations must be a JSON array",
+      );
+    const bulkResult = await collection.bulkWrite(ops, {
+      ordered: inputs.ordered,
+    });
     return {
       insertedCount: bulkResult.insertedCount,
       matchedCount: bulkResult.matchedCount,
@@ -65758,10 +65887,13 @@ const router = createCommandRouter({
       upsertedCount: bulkResult.upsertedCount,
       upsertedIds: bulkResult.upsertedIds
         ? Object.fromEntries(
-            Object.entries(bulkResult.upsertedIds).map(([k, v]) => [k, v.toString()]),
+            Object.entries(bulkResult.upsertedIds).map(([k, v]) => [
+              k,
+              v.toString(),
+            ]),
           )
         : {},
-    }
+    };
   }),
 
   // -----------------------------------------------------------------
@@ -65770,55 +65902,73 @@ const router = createCommandRouter({
 
   aggregate: collHandler(async (collection, _db, inputs) => {
     if (!inputs.pipelineStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'pipeline is required for aggregate')
-    const pipeline = JSON.parse(inputs.pipelineStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "pipeline is required for aggregate",
+      );
+    const pipeline = JSON.parse(inputs.pipelineStr);
     if (!Array.isArray(pipeline))
-      throw new error_W3ActionError('MISSING_INPUT', 'pipeline must be a JSON array')
-    return collection.aggregate(pipeline).toArray()
+      throw new error_W3ActionError("MISSING_INPUT", "pipeline must be a JSON array");
+    return collection.aggregate(pipeline).toArray();
   }),
 
   // -----------------------------------------------------------------
   // Index operations
   // -----------------------------------------------------------------
 
-  'create-index': collHandler(async (collection, _db, inputs) => {
-    if (!inputs.indexStr) throw new error_W3ActionError('MISSING_INPUT', 'index is required for create-index')
-    const indexSpec = JSON.parse(inputs.indexStr)
-    const options = inputs.indexOptionsStr ? JSON.parse(inputs.indexOptionsStr) : {}
-    return collection.createIndex(indexSpec, options)
+  "create-index": collHandler(async (collection, _db, inputs) => {
+    if (!inputs.indexStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "index is required for create-index",
+      );
+    const indexSpec = JSON.parse(inputs.indexStr);
+    const options = inputs.indexOptionsStr
+      ? JSON.parse(inputs.indexOptionsStr)
+      : {};
+    return collection.createIndex(indexSpec, options);
   }),
 
-  'create-indexes': collHandler(async (collection, _db, inputs) => {
+  "create-indexes": collHandler(async (collection, _db, inputs) => {
     if (!inputs.operationsStr)
-      throw new error_W3ActionError('MISSING_INPUT', 'operations is required for create-indexes')
-    const indexSpecs = JSON.parse(inputs.operationsStr)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "operations is required for create-indexes",
+      );
+    const indexSpecs = JSON.parse(inputs.operationsStr);
     if (!Array.isArray(indexSpecs))
-      throw new error_W3ActionError('MISSING_INPUT', 'operations must be a JSON array of index specs')
-    return collection.createIndexes(indexSpecs)
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "operations must be a JSON array of index specs",
+      );
+    return collection.createIndexes(indexSpecs);
   }),
 
-  'drop-index': collHandler(async (collection, _db, inputs) => {
+  "drop-index": collHandler(async (collection, _db, inputs) => {
     if (!inputs.indexName)
-      throw new error_W3ActionError('MISSING_INPUT', 'index-name is required for drop-index')
-    await collection.dropIndex(inputs.indexName)
-    return { dropped: inputs.indexName }
+      throw new error_W3ActionError(
+        "MISSING_INPUT",
+        "index-name is required for drop-index",
+      );
+    await collection.dropIndex(inputs.indexName);
+    return { dropped: inputs.indexName };
   }),
 
-  'drop-indexes': collHandler(async (collection) => {
-    await collection.dropIndexes()
-    return { dropped: 'all non-_id indexes' }
+  "drop-indexes": collHandler(async (collection) => {
+    await collection.dropIndexes();
+    return { dropped: "all non-_id indexes" };
   }),
 
-  'list-indexes': collHandler(async (collection) => {
-    return collection.listIndexes().toArray()
+  "list-indexes": collHandler(async (collection) => {
+    return collection.listIndexes().toArray();
   }),
 
   // -----------------------------------------------------------------
   // Collection info
   // -----------------------------------------------------------------
 
-  'collection-stats': collHandler(async (collection, db, inputs) => {
-    const stats = await db.command({ collStats: inputs.collectionName })
+  "collection-stats": collHandler(async (collection, db, inputs) => {
+    const stats = await db.command({ collStats: inputs.collectionName });
     return {
       count: stats.count,
       size: stats.size,
@@ -65826,9 +65976,18 @@ const router = createCommandRouter({
       storageSize: stats.storageSize,
       totalIndexSize: stats.totalIndexSize,
       indexSizes: stats.indexSizes,
-    }
+    };
   }),
-})
+});
 
-router()
+// Suppress noisy unhandled rejection warnings; the wrapper below
+// catches via handleError, which calls core.setFailed.
+process.on("unhandledRejection", () => {});
+(async () => {
+  try {
+    await router();
+  } catch (error) {
+    handleError(error);
+  }
+})();
 
