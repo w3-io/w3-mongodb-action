@@ -1,0 +1,243 @@
+# E2E Test Workflow
+#
+# Exercises every command against real APIs.
+# Run on a local W3 network with:
+#   w3 workflow deploy test/workflows/e2e.yaml
+#   w3 workflow "mongodb-e2e" trigger
+#
+# Prerequisites:
+#   - W3 local network running (make dev)
+#   - W3_SECRET_MONGODB_URL set to a MongoDB connection string
+#     (e.g. mongodb://localhost:27017/w3_e2e_test)
+
+name: mongodb-e2e
+
+steps:
+  # ── Collection Management ──────────────────────────────────────────────
+
+  - name: Create test collection
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: create-collection
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+
+  - name: List collections
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: list-collections
+      url: ${{ secrets.MONGODB_URL }}
+
+  - name: Get collection stats
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: collection-stats
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+
+  - name: Get database stats
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: db-stats
+      url: ${{ secrets.MONGODB_URL }}
+
+  # ── Insert Operations ──────────────────────────────────────────────────
+
+  - name: Insert one document
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: insert-one
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      document: '{"name":"Alice","age":30,"role":"engineer","tags":["e2e","test"]}'
+
+  - name: Insert many documents
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: insert-many
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      documents: '[{"name":"Bob","age":25,"role":"designer"},{"name":"Carol","age":35,"role":"manager"},{"name":"Dave","age":28,"role":"engineer"}]'
+
+  # ── Read Operations ────────────────────────────────────────────────────
+
+  - name: Find one document
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: find-one
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"name":"Alice"}'
+
+  - name: Find with filter and projection
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: find
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"role":"engineer"}'
+      projection: '{"name":1,"age":1}'
+      sort: '{"age":1}'
+      limit: "10"
+
+  - name: Count documents
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: count
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"role":"engineer"}'
+
+  - name: Estimated document count
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: estimated-count
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+
+  - name: Distinct values for role field
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: distinct
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      field: role
+
+  # ── Update Operations ──────────────────────────────────────────────────
+
+  - name: Update one document
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: update-one
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"name":"Alice"}'
+      update: '{"$set":{"age":31,"updated":true}}'
+
+  - name: Update many documents
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: update-many
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"role":"engineer"}'
+      update: '{"$set":{"department":"engineering"}}'
+
+  - name: Find one and update
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: find-one-and-update
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"name":"Bob"}'
+      update: '{"$set":{"age":26}}'
+      return-document: after
+
+  - name: Replace one document
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: replace-one
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"name":"Carol"}'
+      document: '{"name":"Carol","age":36,"role":"director","replaced":true}'
+
+  - name: Find one and replace
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: find-one-and-replace
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"name":"Dave"}'
+      document: '{"name":"Dave","age":29,"role":"senior-engineer","replaced":true}'
+      return-document: after
+
+  # ── Aggregation ────────────────────────────────────────────────────────
+
+  - name: Aggregate by role
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: aggregate
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      pipeline: '[{"$group":{"_id":"$role","count":{"$sum":1},"avgAge":{"$avg":"$age"}}},{"$sort":{"count":-1}}]'
+
+  # ── Index Operations ───────────────────────────────────────────────────
+
+  - name: Create an index on name
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: create-index
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      index: '{"name":1}'
+      index-options: '{"unique":true}'
+
+  - name: List indexes
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: list-indexes
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+
+  - name: Drop the name index
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: drop-index
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      index-name: name_1
+
+  # ── Bulk Write ─────────────────────────────────────────────────────────
+
+  - name: Bulk write operations
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: bulk-write
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      operations: '[{"insertOne":{"document":{"name":"Eve","age":22,"role":"intern"}}},{"updateOne":{"filter":{"name":"Alice"},"update":{"$set":{"age":32}}}}]'
+
+  # ── Delete Operations ──────────────────────────────────────────────────
+
+  - name: Find one and delete
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: find-one-and-delete
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"name":"Eve"}'
+
+  - name: Delete one document
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: delete-one
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{"name":"Alice"}'
+
+  - name: Delete many documents
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: delete-many
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
+      filter: '{}'
+
+  # ── Run Command ────────────────────────────────────────────────────────
+
+  - name: Run a database command
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: run-command
+      url: ${{ secrets.MONGODB_URL }}
+      db-command: '{"ping":1}'
+
+  # ── Cleanup ────────────────────────────────────────────────────────────
+
+  - name: Drop test collection
+    uses: w3-io/w3-mongodb-action@v0
+    with:
+      command: drop-collection
+      url: ${{ secrets.MONGODB_URL }}
+      collection: e2e_test
