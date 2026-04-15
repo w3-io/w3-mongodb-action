@@ -1,52 +1,57 @@
 # E2E Test Results
 
-Last verified: 2026-04-15
-
-## Environment
-
-- W3 local network (3-node localnet)
-- Protocol: master (includes EIP-712, bridge-allow expansion, nonce manager)
-- Runner image: w3io/w3-runner (Node 20/24)
+> Last verified: 2026-04-15
 
 ## Prerequisites
 
-- W3 local network running (make dev)
-- W3_SECRET_MONGODB_URL set to a MongoDB connection string
-  (e.g. mongodb://localhost:27017/w3_e2e_test)
+| Credential | Env var | Source |
+|-----------|---------|--------|
+| MongoDB connection string | `MONGODB_URL` | Local Docker or MongoDB Atlas |
 
 ## Results
 
-| Step | Command | Status | Notes |
-|------|---------|--------|-------|
-| 1 | create-collection | PASS | e2e_test (reads job) |
-| 2 | list-collections | PASS | |
-| 3 | collection-stats | PASS | e2e_test stats |
-| 4 | db-stats | PASS | Database-level stats |
-| 5 | run-command | PASS | ping:1 |
-| 6 | create-collection | PASS | e2e_test (writes job) |
-| 7 | insert-one | PASS | Single document |
-| 8 | insert-many | PASS | 3 documents |
-| 9 | find-one | PASS | By name filter |
-| 10 | find | PASS | Filter + projection + sort + limit |
-| 11 | count | PASS | Filtered count |
-| 12 | estimated-count | PASS | Estimated document count |
-| 13 | distinct | PASS | Distinct role values |
-| 14 | update-one | PASS | $set on single doc |
-| 15 | update-many | PASS | $set on filtered docs |
-| 16 | find-one-and-update | PASS | Return after |
-| 17 | replace-one | PASS | Full document replace |
-| 18 | find-one-and-replace | PASS | Return after |
-| 19 | aggregate | PASS | $group + $sort pipeline |
-| 20 | create-index | PASS | Unique index on name |
-| 21 | list-indexes | PASS | |
-| 22 | drop-index | PASS | Drop name_1 index |
-| 23 | bulk-write | PASS | insertOne + updateOne |
-| 24 | find-one-and-delete | PASS | Delete Eve |
-| 25 | delete-one | PASS | Delete Alice |
-| 26 | delete-many | PASS | Delete all remaining |
-| 27 | drop-collection | PASS | Cleanup |
+| # | Step | Command | Status | Notes |
+|---|------|---------|--------|-------|
+| 1 | Create test collection | `create-collection` | PASS | |
+| 2 | List collections | `list-collections` | PASS | |
+| 3 | Get collection stats | `collection-stats` | PASS | |
+| 4 | Get database stats | `db-stats` | PASS | |
+| 5 | Run a database command | `run-command` (ping) | PASS | |
+| 6 | Create test collection (writes) | `create-collection` | PASS | |
+| 7 | Insert one document | `insert-one` | PASS | |
+| 8 | Insert many documents | `insert-many` | PASS | |
+| 9 | Find one document | `find-one` | PASS | |
+| 10 | Find with filter and projection | `find` | PASS | |
+| 11 | Count documents | `count` | PASS | |
+| 12 | Estimated document count | `estimated-count` | PASS | |
+| 13 | Distinct values for role field | `distinct` | PASS | |
+| 14 | Update one document | `update-one` | PASS | |
+| 15 | Update many documents | `update-many` | PASS | |
+| 16 | Find one and update | `find-one-and-update` | PASS | |
+| 17 | Replace one document | `replace-one` | PASS | |
+| 18 | Find one and replace | `find-one-and-replace` | PASS | |
+| 19 | Aggregate by role | `aggregate` | PASS | |
+| 20 | Create an index on name | `create-index` | PASS | |
+| 21 | List indexes | `list-indexes` | PASS | |
+| 22 | Drop the name index | `drop-index` | PASS | |
+| 23 | Bulk write operations | `bulk-write` | PASS | |
+| 24 | Find one and delete | `find-one-and-delete` | PASS | |
+| 25 | Delete one document | `delete-one` | PASS | |
+| 26 | Delete many documents | `delete-many` | PASS | |
+| 27 | Drop test collection | `drop-collection` | PASS | |
 
-## Known Limitations
+## Skipped Commands
 
-- None. Full CRUD, aggregation, indexes, bulk write, and collection
-  management all pass.
+| Command | Reason |
+|---------|--------|
+| N/A | All commands tested |
+
+## How to run
+
+```bash
+# Export credentials
+export MONGODB_URL="mongodb://localhost:27017/w3_e2e_test"
+
+# Run
+w3 workflow test --execute test/workflows/e2e.yaml
+```
