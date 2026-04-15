@@ -1,0 +1,467 @@
+name: Test MongoDB Action
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [audie/*]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --name mongo
+        env:
+          MONGO_INITDB_DATABASE: e2e_test
+
+    # MongoDB requires a replica set for transactions. Start as standalone
+    # via services, then convert to a single-node replica set.
+    env:
+      MONGO_URL: mongodb://localhost:27017/e2e_test?directConnection=true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Init replica set for transaction support
+        run: |
+          docker exec mongo mongosh --eval "
+            rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})
+          "
+          sleep 3
+
+      # ── Collection management ────────────────────────────────────────
+
+      - name: create-collection
+        uses: ./
+        id: create_collection
+        with:
+          command: create-collection
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+
+      - name: Verify create-collection
+        run: echo '${{ steps.create_collection.outputs.result }}' | jq -e '.created == "e2e_items"'
+
+      - name: list-collections
+        uses: ./
+        id: list_collections
+        with:
+          command: list-collections
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+
+      - name: Verify list-collections
+        run: echo '${{ steps.list_collections.outputs.result }}' | jq -e 'map(.name) | index("e2e_items") != null'
+
+      # ── Write operations ─────────────────────────────────────────────
+
+      - name: insert-one
+        uses: ./
+        id: insert_one
+        with:
+          command: insert-one
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          document: '{"name": "widget", "price": 9.99, "category": "tools"}'
+
+      - name: Verify insert-one
+        run: echo '${{ steps.insert_one.outputs.result }}' | jq -e '.insertedId'
+
+      - name: insert-many
+        uses: ./
+        id: insert_many
+        with:
+          command: insert-many
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          documents: '[{"name": "gadget", "price": 19.99, "category": "tech"}, {"name": "doohickey", "price": 4.99, "category": "tools"}]'
+
+      - name: Verify insert-many
+        run: echo '${{ steps.insert_many.outputs.result }}' | jq -e '.insertedCount == 2'
+
+      - name: update-one
+        uses: ./
+        id: update_one
+        with:
+          command: update-one
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"name": "widget"}'
+          update: '{"$set": {"price": 12.99}}'
+
+      - name: Verify update-one
+        run: echo '${{ steps.update_one.outputs.result }}' | jq -e '.modifiedCount == 1'
+
+      - name: update-many
+        uses: ./
+        id: update_many
+        with:
+          command: update-many
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"category": "tools"}'
+          update: '{"$set": {"inStock": true}}'
+
+      - name: Verify update-many
+        run: echo '${{ steps.update_many.outputs.result }}' | jq -e '.modifiedCount >= 1'
+
+      - name: replace-one
+        uses: ./
+        id: replace_one
+        with:
+          command: replace-one
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"name": "doohickey"}'
+          document: '{"name": "doohickey", "price": 5.99, "category": "tools", "replaced": true}'
+
+      - name: Verify replace-one
+        run: echo '${{ steps.replace_one.outputs.result }}' | jq -e '.modifiedCount == 1'
+
+      # ── Read operations ──────────────────────────────────────────────
+
+      - name: find-one
+        uses: ./
+        id: find_one
+        with:
+          command: find-one
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"name": "widget"}'
+
+      - name: Verify find-one
+        run: echo '${{ steps.find_one.outputs.result }}' | jq -e '.price == 12.99'
+
+      - name: find
+        uses: ./
+        id: find
+        with:
+          command: find
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{}'
+          sort: '{"price": -1}'
+          limit: "10"
+
+      - name: Verify find
+        run: echo '${{ steps.find.outputs.result }}' | jq -e 'length == 3'
+
+      - name: count
+        uses: ./
+        id: count
+        with:
+          command: count
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{}'
+
+      - name: Verify count
+        run: |
+          COUNT='${{ steps.count.outputs.result }}'
+          test "$COUNT" = "3"
+
+      - name: estimated-count
+        uses: ./
+        id: estimated_count
+        with:
+          command: estimated-count
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+
+      - name: Verify estimated-count
+        run: |
+          COUNT='${{ steps.estimated_count.outputs.result }}'
+          test "$COUNT" -ge "1"
+
+      - name: distinct
+        uses: ./
+        id: distinct
+        with:
+          command: distinct
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          field: category
+          filter: '{}'
+
+      - name: Verify distinct
+        run: echo '${{ steps.distinct.outputs.result }}' | jq -e 'length == 2'
+
+      # ── Atomic find-and-modify ───────────────────────────────────────
+
+      - name: find-one-and-update
+        uses: ./
+        id: find_one_and_update
+        with:
+          command: find-one-and-update
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"name": "gadget"}'
+          update: '{"$set": {"price": 21.99}}'
+          return-document: after
+
+      - name: Verify find-one-and-update
+        run: echo '${{ steps.find_one_and_update.outputs.result }}' | jq -e '.price == 21.99'
+
+      - name: find-one-and-replace
+        uses: ./
+        id: find_one_and_replace
+        with:
+          command: find-one-and-replace
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"name": "gadget"}'
+          document: '{"name": "gadget", "price": 22.99, "category": "tech", "replaced": true}'
+          return-document: after
+
+      - name: Verify find-one-and-replace
+        run: echo '${{ steps.find_one_and_replace.outputs.result }}' | jq -e '.replaced == true'
+
+      - name: find-one-and-delete
+        uses: ./
+        id: find_one_and_delete
+        with:
+          command: find-one-and-delete
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"name": "gadget"}'
+
+      - name: Verify find-one-and-delete
+        run: echo '${{ steps.find_one_and_delete.outputs.result }}' | jq -e '.name == "gadget"'
+
+      # Re-insert gadget for remaining tests
+      - name: Re-insert gadget
+        uses: ./
+        with:
+          command: insert-one
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          document: '{"name": "gadget", "price": 19.99, "category": "tech"}'
+
+      # ── Aggregation ──────────────────────────────────────────────────
+
+      - name: aggregate
+        uses: ./
+        id: aggregate
+        with:
+          command: aggregate
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          pipeline: '[{"$group": {"_id": "$category", "avgPrice": {"$avg": "$price"}}}]'
+
+      - name: Verify aggregate
+        run: echo '${{ steps.aggregate.outputs.result }}' | jq -e 'length >= 1'
+
+      # ── Bulk operations ──────────────────────────────────────────────
+
+      - name: bulk-write
+        uses: ./
+        id: bulk_write
+        with:
+          command: bulk-write
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          operations: '[{"insertOne": {"document": {"name": "bulk-item", "price": 1.00, "category": "bulk"}}}, {"updateOne": {"filter": {"name": "widget"}, "update": {"$set": {"bulkUpdated": true}}}}]'
+
+      - name: Verify bulk-write
+        run: echo '${{ steps.bulk_write.outputs.result }}' | jq -e '.insertedCount == 1 and .modifiedCount == 1'
+
+      # ── Index operations ─────────────────────────────────────────────
+
+      - name: create-index
+        uses: ./
+        id: create_index
+        with:
+          command: create-index
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          index: '{"name": 1}'
+          index-options: '{"name": "idx_name"}'
+
+      - name: Verify create-index
+        run: |
+          RESULT='${{ steps.create_index.outputs.result }}'
+          echo "$RESULT" | grep -q "idx_name"
+
+      - name: create-indexes
+        uses: ./
+        id: create_indexes
+        with:
+          command: create-indexes
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          operations: '[{"key": {"price": 1}, "name": "idx_price"}, {"key": {"category": 1}, "name": "idx_category"}]'
+
+      - name: Verify create-indexes
+        run: echo '${{ steps.create_indexes.outputs.result }}' | jq -e 'length >= 1'
+
+      - name: list-indexes
+        uses: ./
+        id: list_indexes
+        with:
+          command: list-indexes
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+
+      - name: Verify list-indexes
+        run: echo '${{ steps.list_indexes.outputs.result }}' | jq -e 'length >= 4'
+
+      - name: drop-index
+        uses: ./
+        id: drop_index
+        with:
+          command: drop-index
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          index-name: idx_name
+
+      - name: Verify drop-index
+        run: echo '${{ steps.drop_index.outputs.result }}' | jq -e '.dropped == "idx_name"'
+
+      - name: drop-indexes
+        uses: ./
+        id: drop_indexes
+        with:
+          command: drop-indexes
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+
+      - name: Verify drop-indexes
+        run: echo '${{ steps.drop_indexes.outputs.result }}' | jq -e '.dropped == "all non-_id indexes"'
+
+      # ── Collection info ──────────────────────────────────────────────
+
+      - name: collection-stats
+        uses: ./
+        id: collection_stats
+        with:
+          command: collection-stats
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+
+      - name: Verify collection-stats
+        run: echo '${{ steps.collection_stats.outputs.result }}' | jq -e '.count >= 1'
+
+      - name: db-stats
+        uses: ./
+        id: db_stats
+        with:
+          command: db-stats
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+
+      - name: Verify db-stats
+        run: echo '${{ steps.db_stats.outputs.result }}' | jq -e '.collections >= 1'
+
+      - name: run-command
+        uses: ./
+        id: run_command
+        with:
+          command: run-command
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          db-command: '{"ping": 1}'
+
+      - name: Verify run-command
+        run: echo '${{ steps.run_command.outputs.result }}' | jq -e '.ok == 1'
+
+      # ── Delete operations ────────────────────────────────────────────
+
+      - name: delete-one
+        uses: ./
+        id: delete_one
+        with:
+          command: delete-one
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"name": "bulk-item"}'
+
+      - name: Verify delete-one
+        run: echo '${{ steps.delete_one.outputs.result }}' | jq -e '.deletedCount == 1'
+
+      - name: delete-many
+        uses: ./
+        id: delete_many
+        with:
+          command: delete-many
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          filter: '{"category": "tools"}'
+
+      - name: Verify delete-many
+        run: echo '${{ steps.delete_many.outputs.result }}' | jq -e '.deletedCount >= 1'
+
+      # ── Rename and transaction ───────────────────────────────────────
+
+      - name: rename-collection
+        uses: ./
+        id: rename_collection
+        with:
+          command: rename-collection
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items
+          new-name: e2e_items_renamed
+
+      - name: Verify rename-collection
+        run: echo '${{ steps.rename_collection.outputs.result }}' | jq -e '.from == "e2e_items" and .to == "e2e_items_renamed"'
+
+      - name: transaction
+        uses: ./
+        id: transaction
+        with:
+          command: transaction
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          operations: |
+            [
+              {"op": "insertOne", "collection": "e2e_items_renamed", "document": {"name": "tx-item-1", "price": 7.99}},
+              {"op": "insertOne", "collection": "e2e_items_renamed", "document": {"name": "tx-item-2", "price": 3.99}},
+              {"op": "findOne", "collection": "e2e_items_renamed", "filter": {"name": "tx-item-1"}}
+            ]
+
+      - name: Verify transaction
+        run: echo '${{ steps.transaction.outputs.result }}' | jq -e '.committed == true and (.operations | length) == 3'
+
+      # ── Cleanup ──────────────────────────────────────────────────────
+
+      - name: drop-collection (cleanup renamed)
+        uses: ./
+        id: drop_collection
+        with:
+          command: drop-collection
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+          collection: e2e_items_renamed
+
+      - name: Verify drop-collection
+        run: echo '${{ steps.drop_collection.outputs.result }}' | jq -e '.dropped == true'
+
+      - name: drop-database
+        uses: ./
+        id: drop_database
+        with:
+          command: drop-database
+          url: ${{ env.MONGO_URL }}&replicaSet=rs0
+
+      - name: Verify drop-database
+        run: echo '${{ steps.drop_database.outputs.result }}' | jq -e '.dropped == true'
+
+      - name: Summary
+        run: |
+          echo "### MongoDB Action Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All 31 commands tested:" >> $GITHUB_STEP_SUMMARY
+          echo "- Collection mgmt: create-collection, list-collections, rename-collection, drop-collection" >> $GITHUB_STEP_SUMMARY
+          echo "- Write: insert-one, insert-many, update-one, update-many, replace-one" >> $GITHUB_STEP_SUMMARY
+          echo "- Read: find-one, find, count, estimated-count, distinct" >> $GITHUB_STEP_SUMMARY
+          echo "- Atomic: find-one-and-update, find-one-and-replace, find-one-and-delete" >> $GITHUB_STEP_SUMMARY
+          echo "- Aggregation: aggregate" >> $GITHUB_STEP_SUMMARY
+          echo "- Bulk: bulk-write" >> $GITHUB_STEP_SUMMARY
+          echo "- Indexes: create-index, create-indexes, list-indexes, drop-index, drop-indexes" >> $GITHUB_STEP_SUMMARY
+          echo "- Info: collection-stats, db-stats, run-command" >> $GITHUB_STEP_SUMMARY
+          echo "- Delete: delete-one, delete-many" >> $GITHUB_STEP_SUMMARY
+          echo "- Transaction: transaction" >> $GITHUB_STEP_SUMMARY
+          echo "- Database: drop-database" >> $GITHUB_STEP_SUMMARY
