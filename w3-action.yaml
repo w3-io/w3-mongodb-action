@@ -2,345 +2,536 @@ kind: integration
 name: MongoDB document store, queries, aggregations, ACID transactions, and indexes
 version: 0.1.0
 repo: w3-io/w3-mongodb-action
-description: MongoDB document store, queries, aggregations, ACID transactions, and
+description:
+  MongoDB document store, queries, aggregations, ACID transactions, and
   indexes
-context: 'Complete MongoDB API for document workflows. CRUD with filters, projections,
+context:
+  "Complete MongoDB API for document workflows. CRUD with filters, projections,
   sort, limit, skip. Atomic find-and-modify for queue consumers and lock-free updates.
   Aggregation pipelines for analytics. ACID transactions across multiple collections
   (requires replica set or Atlas). Bulk writes for batch operations. Full index management.
   Connects to Atlas, self-hosted, or replica sets via standard connection string.
 
-  '
+  "
 commands:
-- name: find-one
-  description: Find a single document matching a filter.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: false
-      description: Query filter (default {})
-    projection:
-      type: object
-      required: false
-      description: Fields to include/exclude
-  outputs:
-    result:
-      type: object
-      description: Matched document (or null)
-- name: find
-  description: Find multiple documents with filter, sort, skip, limit, and projection.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: false
-      description: Query filter (default {})
-    sort:
-      type: object
-      required: false
-      description: 'Sort specification (e.g. {"age": -1})'
-    limit:
-      type: number
-      required: false
-      description: Max documents to return
-    skip:
-      type: number
-      required: false
-      description: Documents to skip
-    projection:
-      type: object
-      required: false
-      description: Fields to include/exclude
-  outputs:
-    result:
-      type: array
-      description: Array of matched documents
-- name: insert-one
-  description: Insert a single document.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    document:
-      type: object
-      required: true
-      description: Document to insert (JSON)
-  outputs:
-    result:
-      type: object
-      description: '{insertedId}'
-- name: insert-many
-  description: Insert multiple documents (ordered or unordered).
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    documents:
-      type: array
-      required: true
-      description: Array of documents (JSON)
-    ordered:
-      type: boolean
-      required: false
-      description: Execute in order (default true)
-  outputs:
-    result:
-      type: object
-      description: '{insertedCount, insertedIds}'
-- name: update-one
-  description: Update the first document matching a filter.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: true
-      description: Query filter
-    update:
-      type: object
-      required: true
-      description: 'Update operations (e.g. {"$set": {"status": "active"}})'
-    upsert:
-      type: boolean
-      required: false
-      description: Insert if no match (default false)
-  outputs:
-    result:
-      type: object
-      description: '{matchedCount, modifiedCount, upsertedId}'
-- name: update-many
-  description: Update all documents matching a filter.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: true
-      description: Query filter
-    update:
-      type: object
-      required: true
-      description: Update operations
-    upsert:
-      type: boolean
-      required: false
-      description: Insert if no match (default false)
-  outputs:
-    result:
-      type: object
-      description: '{matchedCount, modifiedCount, upsertedId}'
-- name: delete-one
-  description: Delete the first document matching a filter.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: true
-      description: Query filter
-  outputs:
-    result:
-      type: object
-      description: '{deletedCount}'
-- name: delete-many
-  description: Delete all documents matching a filter.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: true
-      description: Query filter
-  outputs:
-    result:
-      type: object
-      description: '{deletedCount}'
-- name: find-one-and-update
-  description: Atomically find and update a document, returning it before or after
-    modification.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: true
-      description: Query filter
-    update:
-      type: object
-      required: true
-      description: Update operations
-    return-document:
-      type: string
-      required: false
-      description: '"before" or "after" (default "after")'
-    sort:
-      type: object
-      required: false
-      description: Sort to determine which document (e.g. for queues)
-    upsert:
-      type: boolean
-      required: false
-      description: Insert if no match (default false)
-  outputs:
-    result:
-      type: object
-      description: The document (before or after modification)
-- name: find-one-and-delete
-  description: Atomically find and delete a document, returning the deleted document.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: true
-      description: Query filter
-    sort:
-      type: object
-      required: false
-      description: Sort to determine which document
-  outputs:
-    result:
-      type: object
-      description: The deleted document
-- name: aggregate
-  description: Run an aggregation pipeline for analytics, transformations, and joins.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    pipeline:
-      type: array
-      required: true
-      description: 'Aggregation stages (e.g. [{"$group": {"_id": "$status", "count":
-        {"$sum": 1}}}])'
-  outputs:
-    result:
-      type: array
-      description: Aggregation results
-- name: count
-  description: Count documents matching a filter.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    filter:
-      type: object
-      required: false
-      description: Query filter (default {})
-  outputs:
-    result:
-      type: number
-      description: Document count
-- name: distinct
-  description: Get distinct values for a field across matching documents.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    field:
-      type: string
-      required: true
-      description: Field to get distinct values for
-    filter:
-      type: object
-      required: false
-      description: Query filter (default {})
-  outputs:
-    result:
-      type: array
-      description: Array of distinct values
-- name: bulk-write
-  description: Execute mixed insert/update/delete operations in a single call.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    operations:
-      type: array
-      required: true
-      description: 'Array of operations (e.g. [{"insertOne": {"document": {...}}},
-        {"deleteOne": {"filter": {...}}}])'
-    ordered:
-      type: boolean
-      required: false
-      description: Execute in order (default true)
-  outputs:
-    result:
-      type: object
-      description: '{insertedCount, matchedCount, modifiedCount, deletedCount, upsertedCount}'
-- name: transaction
-  description: ACID transaction across multiple collections. All operations succeed
-    or all roll back.
-  inputs:
-    operations:
-      type: array
-      required: true
-      description: "Array of operations, each specifying its collection: [{\"collection\"\
-        : \"accounts\", \"op\": \"updateOne\", \"filter\": {...}, \"update\": {...}},\n\
-        \ {\"collection\": \"ledger\", \"op\": \"insertOne\", \"document\": {...}}].\n\
-        Supported ops: insertOne, insertMany, updateOne, updateMany, replaceOne, deleteOne,\
-        \ deleteMany, findOne, findOneAndUpdate, findOneAndDelete.\n"
-  outputs:
-    result:
-      type: object
-      description: '{committed: true, operations: [per-op results]}'
-- name: create-index
-  description: Create an index on a collection.
-  inputs:
-    collection:
-      type: string
-      required: true
-      description: Collection name
-    index:
-      type: object
-      required: true
-      description: 'Index specification (e.g. {"email": 1} or {"location": "2dsphere"})'
-    index-options:
-      type: object
-      required: false
-      description: 'Options (e.g. {"unique": true, "name": "email_idx"})'
-  outputs:
-    result:
-      type: string
-      description: Index name
-- name: estimated-count
-  description: Estimated count.
-- name: replace-one
-  description: Replace one.
-- name: find-one-and-replace
-  description: Find one and replace.
-- name: create-indexes
-  description: Create indexes.
-- name: drop-index
-  description: Drop index.
-- name: drop-indexes
-  description: Drop indexes.
-- name: list-indexes
-  description: List indexes.
-- name: drop-collection
-  description: Drop collection.
+  - name: find-one
+    description: Find a single document matching a filter.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: false
+        description: Query filter (default {})
+      projection:
+        type: object
+        required: false
+        description: Fields to include/exclude
+    outputs:
+      result:
+        type: object
+        description: Matched document (or null)
+  - name: find
+    description: Find multiple documents with filter, sort, skip, limit, and projection.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: false
+        description: Query filter (default {})
+      sort:
+        type: object
+        required: false
+        description: 'Sort specification (e.g. {"age": -1})'
+      limit:
+        type: number
+        required: false
+        description: Max documents to return
+      skip:
+        type: number
+        required: false
+        description: Documents to skip
+      projection:
+        type: object
+        required: false
+        description: Fields to include/exclude
+    outputs:
+      result:
+        type: array
+        description: Array of matched documents
+  - name: insert-one
+    description: Insert a single document.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      document:
+        type: object
+        required: true
+        description: Document to insert (JSON)
+    outputs:
+      result:
+        type: object
+        description: "{insertedId}"
+  - name: insert-many
+    description: Insert multiple documents (ordered or unordered).
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      documents:
+        type: array
+        required: true
+        description: Array of documents (JSON)
+      ordered:
+        type: boolean
+        required: false
+        description: Execute in order (default true)
+    outputs:
+      result:
+        type: object
+        description: "{insertedCount, insertedIds}"
+  - name: update-one
+    description: Update the first document matching a filter.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: true
+        description: Query filter
+      update:
+        type: object
+        required: true
+        description: 'Update operations (e.g. {"$set": {"status": "active"}})'
+      upsert:
+        type: boolean
+        required: false
+        description: Insert if no match (default false)
+    outputs:
+      result:
+        type: object
+        description: "{matchedCount, modifiedCount, upsertedId}"
+  - name: update-many
+    description: Update all documents matching a filter.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: true
+        description: Query filter
+      update:
+        type: object
+        required: true
+        description: Update operations
+      upsert:
+        type: boolean
+        required: false
+        description: Insert if no match (default false)
+    outputs:
+      result:
+        type: object
+        description: "{matchedCount, modifiedCount, upsertedId}"
+  - name: delete-one
+    description: Delete the first document matching a filter.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: true
+        description: Query filter
+    outputs:
+      result:
+        type: object
+        description: "{deletedCount}"
+  - name: delete-many
+    description: Delete all documents matching a filter.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: true
+        description: Query filter
+    outputs:
+      result:
+        type: object
+        description: "{deletedCount}"
+  - name: find-one-and-update
+    description:
+      Atomically find and update a document, returning it before or after
+      modification.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: true
+        description: Query filter
+      update:
+        type: object
+        required: true
+        description: Update operations
+      return-document:
+        type: string
+        required: false
+        description: '"before" or "after" (default "after")'
+      sort:
+        type: object
+        required: false
+        description: Sort to determine which document (e.g. for queues)
+      upsert:
+        type: boolean
+        required: false
+        description: Insert if no match (default false)
+    outputs:
+      result:
+        type: object
+        description: The document (before or after modification)
+  - name: find-one-and-delete
+    description: Atomically find and delete a document, returning the deleted document.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: true
+        description: Query filter
+      sort:
+        type: object
+        required: false
+        description: Sort to determine which document
+    outputs:
+      result:
+        type: object
+        description: The deleted document
+  - name: aggregate
+    description: Run an aggregation pipeline for analytics, transformations, and joins.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      pipeline:
+        type: array
+        required: true
+        description:
+          'Aggregation stages (e.g. [{"$group": {"_id": "$status", "count":
+          {"$sum": 1}}}])'
+    outputs:
+      result:
+        type: array
+        description: Aggregation results
+  - name: count
+    description: Count documents matching a filter.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: false
+        description: Query filter (default {})
+    outputs:
+      result:
+        type: number
+        description: Document count
+  - name: distinct
+    description: Get distinct values for a field across matching documents.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      field:
+        type: string
+        required: true
+        description: Field to get distinct values for
+      filter:
+        type: object
+        required: false
+        description: Query filter (default {})
+    outputs:
+      result:
+        type: array
+        description: Array of distinct values
+  - name: bulk-write
+    description: Execute mixed insert/update/delete operations in a single call.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      operations:
+        type: array
+        required: true
+        description:
+          'Array of operations (e.g. [{"insertOne": {"document": {...}}},
+          {"deleteOne": {"filter": {...}}}])'
+      ordered:
+        type: boolean
+        required: false
+        description: Execute in order (default true)
+    outputs:
+      result:
+        type: object
+        description: "{insertedCount, matchedCount, modifiedCount, deletedCount, upsertedCount}"
+  - name: transaction
+    description:
+      ACID transaction across multiple collections. All operations succeed
+      or all roll back.
+    inputs:
+      operations:
+        type: array
+        required: true
+        description:
+          "Array of operations, each specifying its collection: [{\"collection\"\
+          : \"accounts\", \"op\": \"updateOne\", \"filter\": {...}, \"update\": {...}},\n\
+          \ {\"collection\": \"ledger\", \"op\": \"insertOne\", \"document\": {...}}].\n\
+          Supported ops: insertOne, insertMany, updateOne, updateMany, replaceOne, deleteOne,\
+          \ deleteMany, findOne, findOneAndUpdate, findOneAndDelete.\n"
+    outputs:
+      result:
+        type: object
+        description: "{committed: true, operations: [per-op results]}"
+  - name: create-index
+    description: Create an index on a collection.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      index:
+        type: object
+        required: true
+        description: 'Index specification (e.g. {"email": 1} or {"location": "2dsphere"})'
+      index-options:
+        type: object
+        required: false
+        description: 'Options (e.g. {"unique": true, "name": "email_idx"})'
+    outputs:
+      result:
+        type: string
+        description: Index name
+  - name: estimated-count
+    description: Fast estimated document count using collection metadata (no filter).
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+    outputs:
+      result:
+        type: number
+        description: Estimated document count
+  - name: replace-one
+    description: Replace an entire document matching a filter.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: true
+        description: Query filter
+      document:
+        type: object
+        required: true
+        description: Replacement document (JSON)
+      upsert:
+        type: boolean
+        required: false
+        description: Insert if no match (default false)
+    outputs:
+      result:
+        type: object
+        description: "{matchedCount, modifiedCount, upsertedId}"
+  - name: find-one-and-replace
+    description:
+      Atomically find and replace a document, returning it before or after
+      modification.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      filter:
+        type: object
+        required: true
+        description: Query filter
+      document:
+        type: object
+        required: true
+        description: Replacement document (JSON)
+      return-document:
+        type: string
+        required: false
+        description: '"before" or "after" (default "after")'
+      sort:
+        type: object
+        required: false
+        description: Sort to determine which document
+      upsert:
+        type: boolean
+        required: false
+        description: Insert if no match (default false)
+    outputs:
+      result:
+        type: object
+        description: The document (before or after replacement)
+  - name: create-indexes
+    description: Create multiple indexes on a collection in a single call.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      operations:
+        type: array
+        required: true
+        description: 'Array of index specs (e.g. [{"key": {"email": 1}, "unique": true}])'
+    outputs:
+      result:
+        type: array
+        description: Array of created index names
+  - name: drop-index
+    description: Drop a named index from a collection.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+      index-name:
+        type: string
+        required: true
+        description: Name of the index to drop
+    outputs:
+      result:
+        type: object
+        description: "{dropped: indexName}"
+  - name: drop-indexes
+    description: Drop all non-_id indexes from a collection.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+    outputs:
+      result:
+        type: object
+        description: '{dropped: "all non-_id indexes"}'
+  - name: list-indexes
+    description: List all indexes on a collection.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+    outputs:
+      result:
+        type: array
+        description: Array of index specifications
+  - name: drop-collection
+    description: Drop (delete) a collection and all its documents.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name to drop
+    outputs:
+      result:
+        type: object
+        description: "{dropped: true/false}"
+  - name: list-collections
+    description: List all collections in the database.
+    outputs:
+      result:
+        type: array
+        description: "Array of {name, type, options}"
+  - name: create-collection
+    description: Create a new collection with optional settings.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name to create
+      options:
+        type: object
+        required: false
+        description: Collection creation options (e.g. capped, size, max)
+    outputs:
+      result:
+        type: object
+        description: "{created: collectionName}"
+  - name: rename-collection
+    description: Rename a collection.
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Current collection name
+      new-name:
+        type: string
+        required: true
+        description: New collection name
+    outputs:
+      result:
+        type: object
+        description: "{from, to}"
+  - name: db-stats
+    description: Get database statistics (storage size, collections, indexes).
+    outputs:
+      result:
+        type: object
+        description: Database statistics object
+  - name: run-command
+    description: Run an arbitrary database command.
+    inputs:
+      db-command:
+        type: object
+        required: true
+        description: 'Database command object (e.g. {"ping": 1})'
+    outputs:
+      result:
+        type: object
+        description: Command result
+  - name: drop-database
+    description: Drop the entire database.
+    outputs:
+      result:
+        type: object
+        description: "{dropped: true/false}"
+  - name: collection-stats
+    description: Get collection statistics (count, size, index info).
+    inputs:
+      collection:
+        type: string
+        required: true
+        description: Collection name
+    outputs:
+      result:
+        type: object
+        description: "{count, size, avgObjSize, storageSize, totalIndexSize, indexSizes}"
