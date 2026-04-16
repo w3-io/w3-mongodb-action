@@ -248,7 +248,7 @@ jobs:
           command: delete-many
           url: ${{ secrets.MONGODB_URL }}
           collection: e2e_test
-          filter: '{}'
+          filter: "{}"
 
       # ── Cleanup ────────────────────────────────────────────────────────────
 

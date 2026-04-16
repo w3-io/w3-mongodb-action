@@ -147,7 +147,7 @@ jobs:
           command: find
           url: ${{ env.MONGO_URL }}&replicaSet=rs0
           collection: e2e_items
-          filter: '{}'
+          filter: "{}"
           sort: '{"price": -1}'
           limit: "10"
 
@@ -161,7 +161,7 @@ jobs:
           command: count
           url: ${{ env.MONGO_URL }}&replicaSet=rs0
           collection: e2e_items
-          filter: '{}'
+          filter: "{}"
 
       - name: Verify count
         run: |
@@ -189,7 +189,7 @@ jobs:
           url: ${{ env.MONGO_URL }}&replicaSet=rs0
           collection: e2e_items
           field: category
-          filter: '{}'
+          filter: "{}"
 
       - name: Verify distinct
         run: echo '${{ steps.distinct.outputs.result }}' | jq -e 'length == 2'
