@@ -1,5 +1,6 @@
 kind: integration
-name: MongoDB document store, queries, aggregations, ACID transactions, and indexes
+partner: mongodb
+name: MongoDB
 version: 0.1.0
 repo: w3-io/w3-mongodb-action
 description:
